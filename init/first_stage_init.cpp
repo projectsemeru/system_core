@@ -213,7 +213,8 @@ std::string GetModuleLoadList(BootMode boot_mode, const std::string& dir_path) {
 
 #define MODULE_BASE_DIR "/lib/modules"
 bool LoadKernelModules(BootMode boot_mode, bool want_console,
-                       Modprobe::LoadParallelMode want_parallel_mode, int& modules_loaded) {
+                       Modprobe::LoadParallelMode want_parallel_mode,
+                       bool want_parallel_test, int& modules_loaded) {
     struct utsname uts {};
     if (uname(&uts)) {
         LOG(FATAL) << "Failed to get kernel version.";
@@ -281,7 +282,8 @@ bool LoadKernelModules(BootMode boot_mode, bool want_console,
 
     Modprobe m({MODULE_BASE_DIR}, GetModuleLoadList(boot_mode, MODULE_BASE_DIR));
     bool retval = (want_parallel_mode != Modprobe::LoadParallelMode::NONE) ?
-            m.LoadModulesParallel(std::thread::hardware_concurrency(), want_parallel_mode) :
+            m.LoadModulesParallel(std::thread::hardware_concurrency(),
+                want_parallel_mode, want_parallel_test) :
             m.LoadListedModules(!want_console);
     modules_loaded = m.GetModuleCount();
     if (modules_loaded > 0) {
@@ -440,6 +442,7 @@ int FirstStageMain(int argc, char** argv) {
 
     auto want_console = ALLOW_FIRST_STAGE_CONSOLE ? FirstStageConsole(cmdline, bootconfig) : 0;
     auto want_parallel_mode = Modprobe::LoadParallelMode::NONE;
+    auto want_parallel_test = false;
     if (bootconfig.find("androidboot.load_modules_parallel = \"true\"")
         != std::string::npos)
         want_parallel_mode = Modprobe::LoadParallelMode::NORMAL;
@@ -450,10 +453,15 @@ int FirstStageMain(int argc, char** argv) {
         != std::string::npos)
         want_parallel_mode = Modprobe::LoadParallelMode::CONSERVATIVE;
 
+    if (bootconfig.find("androidboot.load_modules_parallel_test = \"true\"")
+        != std::string::npos)
+        want_parallel_test = true;
+
     boot_clock::time_point module_start_time = boot_clock::now();
     int module_count = 0;
     BootMode boot_mode = GetBootMode(cmdline, bootconfig);
-    if (!LoadKernelModules(boot_mode, want_console, want_parallel_mode, module_count)) {
+    if (!LoadKernelModules(boot_mode, want_console, want_parallel_mode,
+        want_parallel_test, module_count)) {
         if (want_console != FirstStageConsoleParam::DISABLED) {
             LOG(ERROR) << "Failed to load kernel modules, starting console";
         } else {
