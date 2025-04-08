@@ -29,6 +29,7 @@
 #include <sys/syscall.h>
 #include <sys/sysmacros.h>
 #include <sys/types.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 
 #include <android-base/file.h>
@@ -54,6 +55,60 @@ static std::atomic<dev_t> __ashmem_rdev;
 
 /* set to true for verbose logging and other debug  */
 static bool debug_log = false;
+
+static bool assign_ashmem_label_to_memfd(android::base::unique_fd& fd) {
+    static const std::string context = []() -> std::string {
+        // The security context comes from a file that is part of the security policy. Hardcoding
+        // this information would cause a layering violation, since the code should not decide
+        // what context it should be using, but rather that decision should be up to the policy.
+        const std::string context_path = "/system/etc/selinux/ashmem_compat_memfd_context.txt";
+        std::string context;
+
+        if (!android::base::ReadFileToString(context_path, &context)) {
+            ALOGE("Failed to read %s: %m", context_path.c_str());
+            return "";
+        }
+
+        context = android::base::Trim(context);
+        if(context.empty()) {
+            ALOGE("Ashmem SELinux label file is empty");
+            return "";
+        }
+        return context;
+    }();
+    if (context.empty()) {
+        return false;
+    }
+
+    if (fsetxattr(fd, XATTR_NAME_SELINUX, context.c_str(), context.size() + 1, 0) < 0) {
+        ALOGE("fsetxattr(%s) failed: %m", context.c_str());
+        return false;
+    }
+
+    return true;
+}
+
+/* Allocates a memfd and assigns a security context that is provided by the system's security
+ * policy.
+ */
+static android::base::unique_fd __memfd_create_region(const char *name) {
+    // This code needs to build on API levels before 30,
+    // so we can't use the libc wrapper.
+    android::base::unique_fd fd(syscall(__NR_memfd_create, name, MFD_CLOEXEC | MFD_ALLOW_SEALING));
+    if (fd == -1) {
+        return android::base::unique_fd{-1};
+    }
+
+    // memfds are initially labeled as tmpfs files by SELinux. Unfortunately, this makes having
+    // per-domain memfd types and writing scalable policy targeted towards memfd specifically
+    // difficult. Therefore, we relabel memfds allocated by libcutils with a label that the
+    // policy has defined to allow the necessary access to memfds.
+    if (!assign_ashmem_label_to_memfd(fd)) {
+        return android::base::unique_fd{-1};
+    }
+
+    return fd;
+}
 
 static bool __has_memfd_support() {
     // Used to force enable memfd usage. In the future this property will be removed once we switch
@@ -109,10 +164,7 @@ static bool __has_memfd_support() {
     }
 
     // Check that the kernel supports memfd_create().
-    // This code needs to build on API levels before 30,
-    // so we can't use the libc wrapper.
-    android::base::unique_fd fd(
-            syscall(__NR_memfd_create, "test_android_memfd", MFD_CLOEXEC | MFD_ALLOW_SEALING));
+    android::base::unique_fd fd = __memfd_create_region("test_android_memfd");
     if (fd == -1) {
         ALOGE("memfd_create() failed: %m, no memfd support");
         return false;
@@ -253,9 +305,7 @@ int ashmem_valid(int fd) {
 }
 
 static int memfd_create_region(const char* name, size_t size) {
-    // This code needs to build on API levels before 30,
-    // so we can't use the libc wrapper.
-    android::base::unique_fd fd(syscall(__NR_memfd_create, name, MFD_CLOEXEC | MFD_ALLOW_SEALING));
+    android::base::unique_fd fd = __memfd_create_region(name);
 
     if (fd == -1) {
         ALOGE("memfd_create(%s, %zd) failed: %m", name, size);
