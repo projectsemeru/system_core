@@ -301,6 +301,7 @@ cc_test {
         "-Werror",
     ],
     shared_libs: [
+        "libbase",
         "libutils",
     ],
     static_libs: [
