@@ -55,19 +55,57 @@ static std::atomic<dev_t> __ashmem_rdev;
 /* set to true for verbose logging and other debug  */
 static bool debug_log = false;
 
-/* Determine if memfd can be supported. This is just one-time hardwork
- * which will be cached by the caller.
- */
 static bool __has_memfd_support() {
-    // Used to turn on/off the detection at runtime, in the future this
-    // property will be removed once we switch everything over to memfd.
-    //
-    // This can be set to true from the adb shell for debugging.
-    if (!android::base::GetBoolProperty("sys.use_memfd", false)) {
+    // Used to force enable memfd usage. In the future this property will be removed once we switch
+    // everything over to memfd.
+    if (android::base::GetBoolProperty("sys.use_memfd", false)) {
         if (debug_log) {
-            ALOGD("sys.use_memfd=false so memfd disabled");
+            ALOGD("sys.use_memfd=true so using memfd");
+        }
+        return true;
+    }
+
+    // Minimum board API level and SDK version required for memfd usage.
+    const int min_board_api_level = 202604;
+    const int min_sdk_version = 37;
+    const int board_api_level = android::base::GetIntProperty("ro.board.api_level", -1);
+    const int sdk_version = android_get_device_api_level();
+    const int app_target_sdk_version = android_get_application_target_sdk_version();
+
+    // We should really just be interested in the SDK version, since SDK version 37 has all of the
+    // required support for memfd (i.e. both on the kernel front and the platform sepolicy); older
+    // SDK versions do not.
+    //
+    // However, the SDK version is bumped up late in the development cycle, so consider the board
+    // API level too, since that is bumped up ahead of time to give developers time to exercise
+    // new features. This can be removed once the SDK version is bumped up.
+    //
+    // TODO: Remove checks regarding the board API level once SDK 37 has been finalized.
+    if ((sdk_version < min_sdk_version) && (board_api_level < min_board_api_level)) {
+        if (debug_log) {
+            if (sdk_version < min_sdk_version) {
+                ALOGD("Not using memfd: device SDK version %d < %d the minimum SDK version required for memfd",
+                      sdk_version, min_sdk_version);
+            }
+            if (board_api_level < min_board_api_level) {
+                ALOGD("Not using memfd: device board API level %d < %d the minimum board API level required for memfd",
+                      board_api_level, min_board_api_level);
+            }
         }
         return false;
+    }
+
+    if (app_target_sdk_version < min_sdk_version) {
+        if (debug_log) {
+            ALOGD("Not using memfd: application target SDK version %d < %d the minimum target SDK version required for memfd",
+                  app_target_sdk_version, min_sdk_version);
+        }
+        return false;
+    }
+
+    if (debug_log) {
+        ALOGD("memfd API level requirements satisfied: device SDK version: %d board API level: %d application target SDK version: %d",
+              sdk_version, board_api_level, app_target_sdk_version);
     }
 
     // Check that the kernel supports memfd_create().
