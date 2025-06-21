@@ -379,7 +379,7 @@ TEST(AshmemTest, GetLongNameAshmemTests) {
 class AshmemTestMemfdAshmemCompat : public ::testing::Test {
  protected:
   void SetUp() override {
-    if (!has_memfd_support()){
+    if (!use_memfd()){
         GTEST_SKIP() << "No memfd support; skipping memfd-ashmem compat tests";
     }
   }
