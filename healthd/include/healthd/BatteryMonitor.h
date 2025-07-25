@@ -20,6 +20,7 @@
 #include <memory>
 #include <optional>
 
+#include <android-base/result.h>
 #include <batteryservice/BatteryService.h>
 #include <utils/String8.h>
 #include <utils/Vector.h>
@@ -86,6 +87,9 @@ class BatteryMonitor {
     int getBatteryHealthData(int id);
 
     status_t getSerialNumber(std::optional<std::string>* out);
+    base::Result<std::optional<std::string>, base::Errno, false> getManufacturer() const;
+    base::Result<std::optional<std::string>, base::Errno, false> getModelName() const;
+    base::Result<int64_t, base::Errno, false> getVoltageMinDesign() const;
 
     static void logValues(const android::hardware::health::V2_1::HealthInfo& health_info,
                           const struct healthd_config& healthd_config);
