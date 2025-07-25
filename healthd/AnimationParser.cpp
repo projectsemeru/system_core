@@ -91,6 +91,7 @@ bool parse_text_field(const char* in, animation::text_field* field) {
 bool parse_animation_desc(const std::string& content, animation* anim) {
     static constexpr const char* animation_prefix = "animation: ";
     static constexpr const char* fail_prefix = "fail: ";
+    static constexpr const char* overheat_prefix = "overheat: ";
     static constexpr const char* clock_prefix = "clock_display: ";
     static constexpr const char* percent_prefix = "percent_display: ";
 
@@ -114,6 +115,8 @@ bool parse_animation_desc(const std::string& content, animation* anim) {
             }
         } else if (remove_prefix(line, fail_prefix, &rest)) {
             anim->fail_file.assign(rest);
+        } else if (remove_prefix(line, overheat_prefix, &rest)) {
+            anim->overheat_file.assign(rest);
         } else if (remove_prefix(line, clock_prefix, &rest)) {
             if (!parse_text_field(rest, &anim->text_clock)) {
                 LOGE("Bad clock_display format: %s\n", line.c_str());

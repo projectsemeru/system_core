@@ -157,6 +157,7 @@ static const animation BASE_ANIMATION = {
 
         .cur_level = 0,
         .cur_status = BATTERY_STATUS_UNKNOWN,
+        .cur_temp = 0,
 };
 
 void Charger::InitDefaultAnimationFrames() {
@@ -295,7 +296,7 @@ void Charger::BlankSecScreen() {
     if (!init_screen_) {
         /* blank the secondary screen */
         healthd_draw_->blank_screen(false, drm);
-        healthd_draw_->redraw_screen(&batt_anim_, surf_unknown_);
+        healthd_draw_->redraw_screen(&batt_anim_, surf_unknown_, surf_overheat_);
         healthd_draw_->blank_screen(true, drm);
         init_screen_ = true;
     }
@@ -359,6 +360,7 @@ void Charger::UpdateScreenState(int64_t now) {
         LOGV("[%" PRId64 "] animation starting\n", now);
         batt_anim_.cur_level = health_info_.battery_level;
         batt_anim_.cur_status = (int)health_info_.battery_status;
+        batt_anim_.cur_temp = health_info_.battery_temp;
         if (health_info_.battery_level >= 0 && batt_anim_.num_frames != 0) {
             /* find first frame given current battery level */
             for (int i = 0; i < batt_anim_.num_frames; i++) {
@@ -382,7 +384,7 @@ void Charger::UpdateScreenState(int64_t now) {
     }
 
     /* draw the new frame (@ cur_frame) */
-    healthd_draw_->redraw_screen(&batt_anim_, surf_unknown_);
+    healthd_draw_->redraw_screen(&batt_anim_, surf_unknown_, surf_overheat_);
 
     /* if we don't have anim frames, we only have one image, so just bump
      * the cycle counter and exit
@@ -721,11 +723,15 @@ void Charger::InitAnimation() {
     if (batt_anim_.fail_file.empty()) {
         batt_anim_.fail_file.assign(default_animation_root + "charger/battery_fail.png"s);
     }
+    if (batt_anim_.overheat_file.empty()) {
+        batt_anim_.overheat_file.assign(default_animation_root + "charger/battery_overheat.png"s);
+    }
 
     LOGV("Animation Description:\n");
     LOGV("  animation: %d %d '%s' (%d)\n", batt_anim_.num_cycles, batt_anim_.first_frame_repeats,
          batt_anim_.animation_file.c_str(), batt_anim_.num_frames);
     LOGV("  fail_file: '%s'\n", batt_anim_.fail_file.c_str());
+    LOGV("  overheat_file: '%s'\n", batt_anim_.overheat_file.c_str());
     LOGV("  clock: %d %d %d %d %d %d '%s'\n", batt_anim_.text_clock.pos_x,
          batt_anim_.text_clock.pos_y, batt_anim_.text_clock.color_r, batt_anim_.text_clock.color_g,
          batt_anim_.text_clock.color_b, batt_anim_.text_clock.color_a,
@@ -796,6 +802,19 @@ void Charger::OnInit(struct healthd_config* config) {
         if (ret < 0) {
             LOGE("Cannot load built in battery_fail image\n");
             surf_unknown_ = NULL;
+        }
+    }
+
+    ret = CreateDisplaySurface(batt_anim_.overheat_file, &surf_overheat_);
+    if (ret < 0) {
+#if !defined(__ANDROID_VNDK__)
+        LOGE("Cannot load custom battery_overheat image. Reverting to built in: %d\n", ret);
+        ret = CreateDisplaySurface(
+                (system_animation_root + "charger/battery_overheat.png"s).c_str(), &surf_overheat_);
+#endif
+        if (ret < 0) {
+            LOGE("Cannot load built in battery_overheat image\n");
+            surf_overheat_ = NULL;
         }
     }
 
@@ -871,6 +890,7 @@ void animation::set_resource_root(const std::string& root, const std::string& ba
             << "animation backup root " << backup_root << " must start and end with /";
     set_resource_root_for(root, backup_root, &animation_file);
     set_resource_root_for(root, backup_root, &fail_file);
+    set_resource_root_for(root, backup_root, &overheat_file);
     set_resource_root_for(root, backup_root, &text_clock.font_file);
     set_resource_root_for(root, backup_root, &text_percent.font_file);
 }

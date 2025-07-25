@@ -386,6 +386,15 @@ prebuilt_etc {
     filename: "battery_fail.png",
 }
 
+// /vendor/etc/res/images/default/charger/battery_overheat.png
+prebuilt_etc {
+    name: "system_core_charger_res_images_battery_overheat.png_default_vendor",
+    src: "images/battery_overheat.png",
+    relative_install_path: "res/images/default/charger",
+    vendor: true,
+    filename: "battery_overheat.png",
+}
+
 // /vendor/etc/res/images/default/charger/battery_scale.png
 prebuilt_etc {
     name: "system_core_charger_res_images_battery_scale.png_default_vendor",
@@ -399,6 +408,7 @@ phony {
     name: "charger_res_images_vendor",
     required: [
         "system_core_charger_res_images_battery_fail.png_default_vendor",
+        "system_core_charger_res_images_battery_overheat.png_default_vendor",
         "system_core_charger_res_images_battery_scale.png_default_vendor",
     ],
 }

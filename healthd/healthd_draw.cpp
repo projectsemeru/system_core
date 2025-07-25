@@ -81,7 +81,8 @@ HealthdDraw::HealthdDraw(animation* anim)
 
 HealthdDraw::~HealthdDraw() {}
 
-void HealthdDraw::redraw_screen(const animation* batt_anim, GRSurface* surf_unknown) {
+void HealthdDraw::redraw_screen(const animation* batt_anim, GRSurface* surf_unknown,
+                                GRSurface* surf_overheat) {
     if (!graphics_available) return;
     clear_screen();
 
@@ -89,6 +90,8 @@ void HealthdDraw::redraw_screen(const animation* batt_anim, GRSurface* surf_unkn
     if (batt_anim->cur_status == BATTERY_STATUS_UNKNOWN || batt_anim->cur_level < 0 ||
         batt_anim->num_frames == 0)
         draw_unknown(surf_unknown);
+    else if (batt_anim->cur_temp >= 550)
+        draw_overheat(surf_overheat);
     else
         draw_battery(batt_anim);
     gr_flip();
@@ -252,6 +255,19 @@ void HealthdDraw::draw_unknown(GRSurface* surf_unknown) {
         draw_text(sys_font, -1, y + 25, "?\?/100");
     } else {
         LOGW("Charging, level unknown\n");
+    }
+}
+
+void HealthdDraw::draw_overheat(GRSurface* surf_overheat) {
+    int y;
+    if (surf_overheat) {
+        draw_surface_centered(surf_overheat);
+    } else if (sys_font) {
+        gr_color(0xa4, 0xc6, 0x39, 255);
+        y = draw_text(sys_font, -1, -1, "Charging!");
+        draw_text(sys_font, -1, y + 25, "?\?/100");
+    } else {
+        LOGW("Charging, battery overheat\n");
     }
 }
 
