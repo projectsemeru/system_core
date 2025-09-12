@@ -3957,7 +3957,14 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
     if (!using_snapuserd) {
         LOG(INFO) << "Using legacy Virtual A/B (dm-snapshot)";
     }
-
+    auto disable_ublk_through_manifest = false;
+    // Disabling UBLK based snapshots can be requested explicitly through manifest.
+    // This will disable UBLK based snapshots even if device is configured to use UBLK
+    // based on RO property or minimum kernel version.
+    if (dap_metadata.disable_ublk()) {
+        LOG(INFO) << "Disabling UBLK backend for snapshots, requested through manifest.";
+        disable_ublk_through_manifest = true;
+    }
     std::string compression_algorithm;
     uint64_t compression_factor{};
     if (using_snapuserd) {
@@ -4073,7 +4080,11 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
                 android::base::GetUintProperty<uint32_t>("ro.virtual_ab.verify_block_size", 0));
         status.set_num_verification_threads(
                 android::base::GetUintProperty<uint32_t>("ro.virtual_ab.num_verify_threads", 0));
-        status.set_ublk_snapshots_enabled(IsUblkEnabled());
+        if (disable_ublk_through_manifest) {
+            status.set_ublk_snapshots_enabled(false);
+        } else {
+            status.set_ublk_snapshots_enabled(IsUblkEnabled());
+        }
         is_snapshot_ublk_.emplace(status.ublk_snapshots_enabled());
         LOG(INFO) << "Using ublk snapshots: " << status.ublk_snapshots_enabled();
     } else if (legacy_compression) {
