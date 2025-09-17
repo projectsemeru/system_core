@@ -75,6 +75,7 @@
 #include "fastboot_driver.h"
 #include "fastboot_driver_interface.h"
 #include "fs.h"
+#include "h2h_workaround.h"
 #include "storage.h"
 #include "task.h"
 #include "tcp.h"
@@ -287,6 +288,11 @@ static void PrintDevice(const char* local_serial, const char* status = nullptr,
 
 static int list_devices_callback(usb_ifc_info* info) {
     if (match_fastboot_with_serial(info, nullptr) == 0) {
+        // As a temporary workaround, we disregard any h2h device.
+        if (h2h_workaround(info)) {
+            return -1;
+        }
+
         std::string serial = info->serial_number;
         std::string interface = info->interface;
         if (interface.empty()) {
