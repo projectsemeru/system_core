@@ -635,13 +635,13 @@ int main(int argc, char** argv) {
   // the threads, fetch their registers and associated information, and then
   // fork a separate process as a snapshot of the process's address space.
   std::set<pid_t> threads;
-  if (!android::procinfo::GetProcessTids(g_target_thread, &threads)) {
-    PLOG(FATAL) << "failed to get process threads";
+  std::string error;
+  if (!android::procinfo::GetProcessTids(g_target_thread, &threads, &error)) {
+    PLOG(FATAL) << "failed to get process threads: " << error;
   }
 
   std::map<pid_t, ThreadInfo> thread_info;
   siginfo_t siginfo;
-  std::string error;
   bool recoverable_crash = false;
 
   {
