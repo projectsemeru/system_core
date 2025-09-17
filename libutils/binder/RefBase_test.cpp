@@ -41,6 +41,9 @@ class Foo : public RefBase {
 
     ~Foo() { *mDeleted = true; }
 
+    void doTag() { getWeakRefs()->tag(RefBase::OBJECT_TAG_JAVA_PROXY); }
+    void doUntag() { getWeakRefs()->untag(RefBase::OBJECT_TAG_JAVA_PROXY); }
+
   private:
     bool* mDeleted;
 };
@@ -303,6 +306,39 @@ TEST(RefBase, AssertWeakRefExistsDeath) {
     EXPECT_DEATH(wp<Foo>::fromExisting(foo), "");
 
     delete foo;
+}
+
+TEST(RefBase, Rfsan_TagUntag) {
+    bool isDeleted;
+    Foo* foo = new Foo(&isDeleted);
+    foo->incStrong(nullptr);
+    foo->doTag();
+    foo->doUntag();
+    EXPECT_FALSE(isDeleted);
+    foo->decStrong(nullptr);
+    EXPECT_TRUE(isDeleted);
+}
+
+TEST(RefBase, Rfsan_DoubleTag) {
+    bool isDeleted;
+    Foo* foo = new Foo(&isDeleted);
+    foo->doTag();
+
+    EXPECT_DEATH(foo->doTag(), "RBSAN: Can't set flag 65536 when it's set: 65536");
+}
+
+TEST(RefBase, Rfsan_DieIfOnlyUntagged) {
+    bool isDeleted;
+    Foo* foo = new Foo(&isDeleted);
+    EXPECT_DEATH(foo->doUntag(), "Can't unset flag 65536 when it's not set: 0");
+}
+
+TEST(RefBase, Rfsan_DieIfDeletedWithTag) {
+    bool isDeleted;
+    Foo* foo = new Foo(&isDeleted);
+    foo->incStrong(nullptr);
+    foo->doTag();
+    EXPECT_DEATH(foo->decStrong(nullptr), "RBSAN: Object is deleted, but it is tagged: 65536");
 }
 
 TEST(RefBase, NoStrongCountPromoteFromWeak) {
