@@ -289,7 +289,7 @@ static void PrintDevice(const char* local_serial, const char* status = nullptr,
 static int list_devices_callback(usb_ifc_info* info) {
     if (match_fastboot_with_serial(info, nullptr) == 0) {
         // As a temporary workaround, we disregard any h2h device.
-        if (h2h_workaround(info)) {
+        if (is_h2h_device(info)) {
             return -1;
         }
 

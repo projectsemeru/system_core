@@ -20,6 +20,6 @@
 
 // TODO(b/441807482): Remove this workaround when h2h cable FW is updated
 // The function returns true when workaround should be applied for given USB
-// interface. The workaround is not displaying h2h entries in
+// interface. The workaround is to not display h2h entries in
 // "fastboot devices" output.
-bool h2h_workaround(usb_ifc_info* info);
+bool is_h2h_device(usb_ifc_info* info);

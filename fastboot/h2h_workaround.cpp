@@ -21,7 +21,7 @@
 #define H2H_PID1 0x506d
 #define H2H_PID2 0x27a7
 
-bool h2h_workaround(usb_ifc_info* info) {
+bool is_h2h_device(usb_ifc_info* info) {
     return info->dev_vendor == GOOGLE_VID && (info->dev_product == H2H_PID1 ||
                                               info->dev_product == H2H_PID2);
 }
