@@ -509,12 +509,6 @@ void RefBase::decStrong(const void* id) const
         refs->mBase->onLastStrongRef(id);
         const int32_t flags = refs->mFlags.load(std::memory_order_relaxed);
 
-        // NOTE: if 'c' is 2 and 2 tags are set, we could also crash. However, we don't
-        // currently as this would require adding additional atomic reads.
-        const int32_t tags = flags & OBJECT_TAG_MASK;
-        LOG_ALWAYS_FATAL_IF(tags != 0, "RBSAN: Object is deleted, but it is tagged: %" PRId32,
-                            tags);
-
         if ((flags&OBJECT_LIFETIME_MASK) == OBJECT_LIFETIME_STRONG) {
             // The destructor does not delete refs in this case.
             ANDROID_DELETE(RefBase, this);
@@ -819,7 +813,13 @@ RefBase::RefBase() : mRefs(ANDROID_NEW(weakref_impl, this)) {}
 
 RefBase::~RefBase()
 {
-    int32_t flags = mRefs->mFlags.load(std::memory_order_relaxed);
+    const int32_t flags = mRefs->mFlags.load(std::memory_order_relaxed);
+
+    // NOTE: if 'c' is 2 and 2 tags are set, we could also crash. However, we don't
+    // currently as this would require adding additional atomic reads.
+    const int32_t tags = flags & OBJECT_TAG_MASK;
+    LOG_ALWAYS_FATAL_IF(tags != 0, "RBSAN: Object is deleted, but it is tagged: %" PRId32, tags);
+
     // Life-time of this object is extended to WEAK, in
     // which case weakref_impl doesn't out-live the object and we
     // can free it now.
