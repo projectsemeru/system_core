@@ -41,7 +41,7 @@ class Modprobe {
              bool use_blocklist = true);
     Modprobe(ModuleConfig config, bool use_blocklist = true);
 
-    bool LoadModulesParallel(int num_threads, int mode) EXCLUDES(module_loaded_lock_);
+    bool LoadModulesParallel(int num_threads, int mode, bool test) EXCLUDES(module_loaded_lock_);
     bool LoadListedModules(bool strict = true);
     bool LoadWithAliases(const std::string& module_name, bool strict,
                          const std::string& parameters = "") EXCLUDES(module_loaded_lock_);

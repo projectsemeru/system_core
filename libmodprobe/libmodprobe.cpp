@@ -24,8 +24,10 @@
 #include <sys/wait.h>
 
 #include <algorithm>
+#include <ctime>
 #include <condition_variable>
 #include <map>
+#include <random>
 #include <set>
 #include <string>
 #include <thread>
@@ -158,7 +160,7 @@ bool Modprobe::IsBlocklisted(const std::string& module_name) {
 // repeat these steps until all modules are loaded.
 // Discard all blocklist.
 // Softdeps are taken care in InsmodWithDeps().
-bool Modprobe::LoadModulesParallel(int num_threads, int mode) {
+bool Modprobe::LoadModulesParallel(int num_threads, int mode, bool test_mode) {
     std::map<std::string, std::vector<std::string>> mods_with_deps;
     std::unordered_set<std::string> mods_loading;
     std::vector<std::string> parallel_modules, sequential_modules;
@@ -169,7 +171,8 @@ bool Modprobe::LoadModulesParallel(int num_threads, int mode) {
     std::condition_variable cv_update_module, cv_load_module;
     int sleeping_threads = 0;
 
-    LOG(INFO) << "LoadParallelMode:" << mode;
+    if (test_mode)
+        LOG(INFO) << "LoadParallelMode:" << mode << " test_mode: " << test_mode;
 
     // Get dependencies
     for (const auto& module : module_load_) {
@@ -257,6 +260,13 @@ bool Modprobe::LoadModulesParallel(int num_threads, int mode) {
             if (mode == LoadParallelMode::CONSERVATIVE &&
                 parallel_modules.size() >= num_threads)
                 break;
+        }
+
+        if (test_mode) {
+            std::random_device rd;
+            std::mt19937 rng(rd());
+
+            std::shuffle(parallel_modules.begin(), parallel_modules.end(), rng);
         }
 
         cv_load_module.notify_all();
