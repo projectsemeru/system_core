@@ -389,7 +389,8 @@ TEST_F(CrasherTest, fault_address_read) {
                   "https://github.com/google/android-riscv64/issues/118 is fixed.";
 #endif
 
-  StartProcess([]() { volatile char value = *reinterpret_cast<volatile char*>(0xdead); });
+  StartProcess(
+      []() { [[maybe_unused]] volatile char value = *reinterpret_cast<volatile char*>(0xdead); });
 
   unique_fd output_fd;
   StartIntercept(&output_fd);
