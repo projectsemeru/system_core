@@ -311,7 +311,8 @@ TEST_P(RefBaseBothLifetimes, AssertWeakRefExistsSuccess) {
 
 TEST_P(RefBaseBothLifetimes, AssertWeakRefExistsDeath) {
     // can only get a valid wp<> object when you construct it from an sp<>
-    EXPECT_DEATH(wp<Foo>::fromExisting(foo), "");
+    EXPECT_DEATH(wp<Foo>::fromExisting(foo),
+                 "incWeakRequireWeak called on .* which has no weak refs");
 
     delete foo;  // if inc/decStrong is never used must manually delete
 }
@@ -380,12 +381,17 @@ TEST(RefBase, DoubleOwnershipDeath) {
     sp<Foo> foo = sp<Foo>::make(&isDeleted);
 
     // if something else thinks it owns foo, should die
-    EXPECT_DEATH(delete foo.get(), "");
+    EXPECT_DEATH(delete foo.get(), "object .* with strong count 1 deleted. Double owned?");
 }
 
 TEST(RefBase, StackOwnershipDeath) {
     bool isDeleted;
-    EXPECT_DEATH({ Foo foo(&isDeleted); foo.incStrong(nullptr); }, "");
+    EXPECT_DEATH(
+            {
+                Foo foo(&isDeleted);
+                foo.incStrong(nullptr);
+            },
+            "RefBase used with stack pointer argument");
 }
 
 // Set up a situation in which we race with visit2AndRremove() to delete
