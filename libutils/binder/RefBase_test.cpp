@@ -38,6 +38,11 @@ static constexpr int INITIAL_STRONG_VALUE = 1 << 28;  // Mirroring RefBase defin
 class Foo : public RefBase {
   public:
     Foo(bool* deleted_check) : mDeleted(deleted_check) { *mDeleted = false; }
+    Foo(bool* deleted_check, bool weak) : Foo(deleted_check) {
+        if (weak) {
+            extendObjectLifetime(RefBase::OBJECT_LIFETIME_WEAK);
+        }
+    }
 
     ~Foo() { *mDeleted = true; }
 
@@ -46,6 +51,20 @@ class Foo : public RefBase {
 
   private:
     bool* mDeleted;
+};
+
+class RefBaseBothLifetimes : public ::testing::TestWithParam<bool> {
+  protected:
+    void SetUp() override {
+        mWeakLifetime = GetParam();
+        foo = new Foo(&isDeleted, mWeakLifetime);
+    }
+
+    void TearDown() override { EXPECT_TRUE(isDeleted) << "Foo leaked!"; }
+
+    bool mWeakLifetime;
+    bool isDeleted;
+    Foo* foo;
 };
 
 class DoNothingNoVirtualDestructor : public RefBase {
@@ -122,9 +141,7 @@ class TestAllocator : public Allocator {
 };
 #endif  // ANDROID_UTILS_CUSTOM_ALLOCATOR
 
-TEST(RefBase, StrongMoves) {
-    bool isDeleted;
-    Foo* foo = new Foo(&isDeleted);
+TEST_P(RefBaseBothLifetimes, StrongMoves) {
     ASSERT_EQ(INITIAL_STRONG_VALUE, foo->getStrongCount());
     ASSERT_FALSE(isDeleted) << "Already deleted...?";
     sp<Foo> sp1(foo);
@@ -141,13 +158,16 @@ TEST(RefBase, StrongMoves) {
         // is properly reset and doesn't early delete
         sp1 = std::move(sp2);
     }
+
+    EXPECT_EQ(1, foo->getStrongCount());
+    EXPECT_EQ(2, foo->getWeakRefs()->getWeakCount());
+
     ASSERT_FALSE(isDeleted) << "deleted too early! still has a reference!";
     {
         // Now let's double check it deletes on time
         sp<Foo> sp2 = std::move(sp1);
     }
-    ASSERT_TRUE(isDeleted) << "foo was leaked!";
-    ASSERT_TRUE(wp1.promote().get() == nullptr);
+    ASSERT_NE(mWeakLifetime, isDeleted) << "foo was leaked!";
 }
 
 TEST(RefBase, WeakCopies) {
@@ -167,9 +187,8 @@ TEST(RefBase, WeakCopies) {
     ASSERT_FALSE(isDeleted) << "Deletion on wp destruction should no longer occur";
 }
 
-TEST(RefBase, Comparisons) {
-    bool isDeleted, isDeleted2, isDeleted3;
-    Foo* foo = new Foo(&isDeleted);
+TEST_P(RefBaseBothLifetimes, Comparisons) {
+    bool isDeleted2, isDeleted3;
     Foo* foo2 = new Foo(&isDeleted2);
     sp<Foo> sp1(foo);
     sp<Foo> sp2(foo2);
@@ -218,7 +237,7 @@ TEST(RefBase, Comparisons) {
     ASSERT_FALSE(wp1 != wp3);
     ASSERT_FALSE(isDeleted);
     sp1.clear();
-    ASSERT_TRUE(isDeleted);
+    ASSERT_NE(mWeakLifetime, isDeleted);
     ASSERT_TRUE(sp1 == sp2);
     // Try to check that null pointers are properly initialized.
     {
@@ -280,67 +299,54 @@ TEST(RefBase, ReplacedComparison) {
     ASSERT_FALSE(wp1 != wp2);
 }
 
-TEST(RefBase, AssertWeakRefExistsSuccess) {
-    bool isDeleted;
-    sp<Foo> foo = sp<Foo>::make(&isDeleted);
-    wp<Foo> weakFoo = foo;
+TEST_P(RefBaseBothLifetimes, AssertWeakRefExistsSuccess) {
+    sp<Foo> strongFoo = foo;
+    wp<Foo> weakFoo = strongFoo;
 
-    EXPECT_EQ(weakFoo, wp<Foo>::fromExisting(foo.get()));
-    EXPECT_EQ(weakFoo.unsafe_get(), wp<Foo>::fromExisting(foo.get()).unsafe_get());
+    EXPECT_EQ(weakFoo, wp<Foo>::fromExisting(strongFoo.get()));
+    EXPECT_EQ(weakFoo.unsafe_get(), wp<Foo>::fromExisting(strongFoo.get()).unsafe_get());
 
     EXPECT_FALSE(isDeleted);
-    foo = nullptr;
-    EXPECT_TRUE(isDeleted);
 }
 
-TEST(RefBase, AssertWeakRefExistsDeath) {
-    // uses some other refcounting method, or none at all
-    bool isDeleted;
-    Foo* foo = new Foo(&isDeleted);
-
+TEST_P(RefBaseBothLifetimes, AssertWeakRefExistsDeath) {
     // can only get a valid wp<> object when you construct it from an sp<>
     EXPECT_DEATH(wp<Foo>::fromExisting(foo), "");
 
-    delete foo;
+    delete foo;  // if inc/decStrong is never used must manually delete
 }
 
-TEST(RefBase, Rfsan_TagUntag) {
-    bool isDeleted;
-    Foo* foo = new Foo(&isDeleted);
+TEST_P(RefBaseBothLifetimes, TagUntag) {
     foo->incStrong(nullptr);
     foo->doTag();
     foo->doUntag();
     EXPECT_FALSE(isDeleted);
     foo->decStrong(nullptr);
-    EXPECT_TRUE(isDeleted);
 }
 
-TEST(RefBase, Rfsan_DoubleTag) {
-    bool isDeleted;
-    Foo* foo = new Foo(&isDeleted);
+TEST_P(RefBaseBothLifetimes, DoubleTag) {
+    foo->incStrong(nullptr);
     foo->doTag();
-
     EXPECT_DEATH(foo->doTag(), "RBSAN: Can't set flag 65536 when it's set: 65536");
+    foo->doUntag();
+    foo->decStrong(nullptr);
 }
 
-TEST(RefBase, Rfsan_DieIfOnlyUntagged) {
-    bool isDeleted;
-    Foo* foo = new Foo(&isDeleted);
+TEST_P(RefBaseBothLifetimes, DieIfOnlyUntagged) {
+    foo->incStrong(nullptr);
     EXPECT_DEATH(foo->doUntag(), "Can't unset flag 65536 when it's not set: 0");
+    foo->decStrong(nullptr);
 }
 
-TEST(RefBase, Rfsan_DieIfDeletedWithTag) {
-    bool isDeleted;
-    Foo* foo = new Foo(&isDeleted);
+TEST_P(RefBaseBothLifetimes, DieIfDeletedWithTag) {
     foo->incStrong(nullptr);
     foo->doTag();
     EXPECT_DEATH(foo->decStrong(nullptr), "RBSAN: Object is deleted, but it is tagged: 65536");
+    foo->doUntag();
+    foo->decStrong(nullptr);
 }
 
-TEST(RefBase, NoStrongCountPromoteFromWeak) {
-    bool isDeleted;
-    Foo* foo = new Foo(&isDeleted);
-
+TEST_P(RefBaseBothLifetimes, NoStrongCountPromoteFromWeak) {
     wp<Foo> weakFoo = wp<Foo>(foo);
 
     EXPECT_FALSE(isDeleted);
@@ -365,17 +371,16 @@ TEST(RefBase, NoStrongCountPromoteFromWeak) {
     //
     // attemptIncStrong aborting in this case is a backwards incompatible
     // change due to frequent use of wp<T>(this) in the constructor.
-    EXPECT_TRUE(isDeleted);
+    EXPECT_NE(mWeakLifetime, isDeleted);
 }
 
+// TODO: this is not caught for OBJECT_LIFETIME_WEAK. Please improve?
 TEST(RefBase, DoubleOwnershipDeath) {
     bool isDeleted;
-    auto foo = sp<Foo>::make(&isDeleted);
+    sp<Foo> foo = sp<Foo>::make(&isDeleted);
 
     // if something else thinks it owns foo, should die
     EXPECT_DEATH(delete foo.get(), "");
-
-    EXPECT_FALSE(isDeleted);
 }
 
 TEST(RefBase, StackOwnershipDeath) {
@@ -550,6 +555,7 @@ TEST(RefBase, RacingPromotions) {
 }
 
 #ifdef ANDROID_UTILS_CUSTOM_ALLOCATOR
+// TODO: also test with RefBaseBothLifetimes
 
 TEST(RefBase, CustomAllocator) {
     TestAllocator allocator;  // Use the mock allocator
@@ -620,3 +626,5 @@ TEST(RefBase, CustomAllocatorCallsRightDestructor) {
 }
 
 #endif  // ANDROID_UTILS_CUSTOM_ALLOCATOR
+
+INSTANTIATE_TEST_SUITE_P(Strong0Weak1, RefBaseBothLifetimes, ::testing::Bool());
