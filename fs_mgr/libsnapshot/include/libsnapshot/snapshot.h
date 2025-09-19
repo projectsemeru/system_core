@@ -369,6 +369,9 @@ class SnapshotManager final : public ISnapshotManager {
     // to cleanly exit.
     bool PerformSecondStageInitTransition();
 
+    // Write a mode as hint for snapuserd if we cannot use argv as snapuserd
+    // is being started through service mode.
+    bool WriteSnapuserdModeHint(const std::string& mode);
     // ISnapshotManager overrides.
     bool BeginUpdate() override;
     bool CancelUpdate() override;
@@ -735,6 +738,7 @@ class SnapshotManager final : public ISnapshotManager {
     std::string GetOldPartitionMetadataPath();
     std::string GetBootSnapshotsWithoutSlotSwitchPath();
     std::string GetSnapuserdFromSystemPath();
+    std::string GetSnapuserdModeHintFilePath();
 
     bool HasForwardMergeIndicator();
 

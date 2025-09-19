@@ -380,6 +380,7 @@ bool SnapshotManager::RemoveAllUpdateState(LockedFile* lock, const std::function
             GetSnapshotBootIndicatorPath(),          GetRollbackIndicatorPath(),
             GetForwardMergeIndicatorPath(),          GetOldPartitionMetadataPath(),
             GetBootSnapshotsWithoutSlotSwitchPath(), GetSnapuserdFromSystemPath(),
+            GetSnapuserdModeHintFilePath(),
     };
     for (const auto& file : files) {
         RemoveFileIfExists(file);
@@ -832,6 +833,16 @@ bool SnapshotManager::MapUserspaceCowUblk(const std::string& name, const std::st
     } else {
         if (out_final_path) out_final_path->clear();
     }
+    return true;
+}
+
+bool SnapshotManager::WriteSnapuserdModeHint(const std::string& mode) {
+    auto path = GetSnapuserdModeHintFilePath();
+    if (!WriteStringToFileAtomic(mode, GetSnapuserdModeHintFilePath())) {
+        PLOG(ERROR) << "Could not write to state file";
+        return false;
+    }
+
     return true;
 }
 
@@ -1921,6 +1932,10 @@ std::string SnapshotManager::GetRollbackIndicatorPath() {
 
 std::string SnapshotManager::GetSnapuserdFromSystemPath() {
     return metadata_dir_ + "/" + android::base::Basename(kSnapuserdFromSystem);
+}
+
+std::string SnapshotManager::GetSnapuserdModeHintFilePath() {
+    return metadata_dir_ + "/" + android::base::Basename(kSnapuserdModeHintFile);
 }
 
 std::string SnapshotManager::GetForwardMergeIndicatorPath() {
@@ -4082,6 +4097,7 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
                 android::base::GetUintProperty<uint32_t>("ro.virtual_ab.num_verify_threads", 0));
         if (disable_ublk_through_manifest) {
             status.set_ublk_snapshots_enabled(false);
+            WriteSnapuserdModeHint(kSnapuserdModeDmUser);
         } else {
             status.set_ublk_snapshots_enabled(IsUblkEnabled());
         }
