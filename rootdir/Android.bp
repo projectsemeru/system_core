@@ -169,12 +169,6 @@ prebuilt_etc {
 }
 
 prebuilt_etc {
-    name: "init-mmd-prop.rc",
-    src: "init-mmd-prop.rc",
-    sub_dir: "init",
-}
-
-prebuilt_etc {
     name: "init-perfetto.rc",
     src: "init-perfetto.rc",
     sub_dir: "init",
