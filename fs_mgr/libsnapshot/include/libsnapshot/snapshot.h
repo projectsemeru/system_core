@@ -472,6 +472,7 @@ class SnapshotManager final : public ISnapshotManager {
     FRIEND_TEST(SnapshotUpdateTest, MapAllSnapshotsWithoutSlotSwitch);
     FRIEND_TEST(SnapshotUpdateTest, CancelInRecovery);
     FRIEND_TEST(SnapshotUpdateTest, MergeRespectsSourceUblkDisabled);
+    FRIEND_TEST(SnapshotUpdateTest, DisableUblkViaManifest);
     friend class SnapshotTest;
     friend class SnapshotUpdateTest;
     friend class FlashAfterUpdateTest;
