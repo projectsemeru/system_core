@@ -789,12 +789,68 @@ bool SnapshotManager::MapUserspaceCowDmUser(
     return true;
 }
 
+bool SnapshotManager::EnsureSnapuserdIsUblk() {
+    if (!EnsureSnapuserdConnected()) {
+        LOG(ERROR) << "Failed to connect to snapuserd.";
+        return false;
+    }
+
+    std::string mode = snapuserd_client_->GetSnapuserdMode();
+    if (mode == kSnapuserdModeUblk) {
+        return true;
+    }
+
+    if (mode == kSnapuserdModeDmUser) {
+        LOG(INFO) << "snapuserd is in dm-user mode. Restarting in ublk mode.";
+
+        if (!snapuserd_client_->StopSnapuserd()) {
+            LOG(ERROR) << "Failed to stop snapuserd. Cannot switch to ublk mode.";
+            return false;
+        }
+
+        snapuserd_client_->WaitForServiceToTerminate(5s);
+        if (android::base::GetProperty("init.svc.snapuserd", "") == "running") {
+            LOG(ERROR) << "snapuserd did not stop after 5s.";
+            return false;
+        }
+        LOG(INFO) << "snapuserd stopped.";
+
+        snapuserd_client_ = nullptr;
+
+        if (!WriteSnapuserdModeHint(kSnapuserdModeUblk)) {
+            LOG(ERROR) << "Failed to write snapuserd ublk mode hint file.";
+            return false;
+        }
+
+        if (!EnsureSnapuserdConnected()) {
+            LOG(ERROR) << "Failed to reconnect to snapuserd after restarting.";
+            return false;
+        }
+
+        mode = snapuserd_client_->GetSnapuserdMode();
+        if (mode != kSnapuserdModeUblk) {
+            LOG(ERROR) << "Failed to restart snapuserd in ublk mode. Current mode: " << mode;
+            return false;
+        }
+
+        LOG(INFO) << "Successfully restarted snapuserd in ublk mode.";
+        return true;
+    }
+
+    LOG(ERROR) << "snapuserd is in an unknown or error state. Mode: '" << mode << "'";
+    return false;
+}
+
 bool SnapshotManager::MapUserspaceCowUblk(const std::string& name, const std::string& misc_name,
                                           const std::string& cow_file,
                                           const std::string& base_device,
                                           const std::string& base_path_merge, uint64_t base_sectors,
                                           const std::chrono::milliseconds& timeout_ms,
                                           std::string* out_final_path) {
+    if (!EnsureSnapuserdIsUblk()) {
+        LOG(ERROR) << "Failed to ensure snapuserd is running in ublk mode.";
+        return false;
+    }
     // Step 1: Ublk prerequisites and initial device creation request
     if (!HandleUblkDeviceCreation(misc_name, base_sectors, timeout_ms)) {
         return false;

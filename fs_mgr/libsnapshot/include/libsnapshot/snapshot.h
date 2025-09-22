@@ -493,6 +493,7 @@ class SnapshotManager final : public ISnapshotManager {
 
     // Ensure we're connected to snapuserd.
     bool EnsureSnapuserdConnected(std::chrono::milliseconds timeout_ms = 10s);
+    bool EnsureSnapuserdIsUblk();
 
     // Helpers for first-stage init.
     const std::unique_ptr<IDeviceInfo>& device() const { return device_; }
