@@ -115,6 +115,10 @@ class SnapuserdClient {
 
     // Resume Merge threads
     bool ResumeMerge();
+
+    // Returns the snapuserd mode: "dm-user" or "ublk"
+    std::string GetSnapuserdMode();
+
     // Returns true if snapuserd instance supports UBLK snapshots
     bool SupportsUblk();
 };

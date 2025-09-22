@@ -440,5 +440,13 @@ bool SnapuserdClient::ResumeMerge() {
     return response == "success";
 }
 
+std::string SnapuserdClient::GetSnapuserdMode() {
+    if (!Sendmsg("get_mode")) {
+        LOG(ERROR) << "Failed to send get_mode message to snapuserd.";
+        return "";
+    }
+    return Receivemsg();
+}
+
 }  // namespace snapshot
 }  // namespace android
