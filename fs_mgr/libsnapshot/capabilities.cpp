@@ -34,8 +34,8 @@ static bool KernelSupportsUblk() {
     if (sscanf(uts.release, "%u.%u", &major, &minor) != 2) {
         return false;
     }
-    // We will only support kernels from 6.1 onwards
-    return major > 6 || (major == 6 && minor >= 1);
+    // We will only support kernels from 6.6 onwards
+    return major > 6 || (major == 6 && minor >= 6);
 }
 
 static bool IsVabcWithUblkSupportEnabledByFlag() {

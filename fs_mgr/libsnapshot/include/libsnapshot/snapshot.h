@@ -369,6 +369,9 @@ class SnapshotManager final : public ISnapshotManager {
     // to cleanly exit.
     bool PerformSecondStageInitTransition();
 
+    // Write a mode as hint for snapuserd if we cannot use argv as snapuserd
+    // is being started through service mode.
+    bool WriteSnapuserdModeHint(const std::string& mode);
     // ISnapshotManager overrides.
     bool BeginUpdate() override;
     bool CancelUpdate() override;
@@ -469,6 +472,7 @@ class SnapshotManager final : public ISnapshotManager {
     FRIEND_TEST(SnapshotUpdateTest, MapAllSnapshotsWithoutSlotSwitch);
     FRIEND_TEST(SnapshotUpdateTest, CancelInRecovery);
     FRIEND_TEST(SnapshotUpdateTest, MergeRespectsSourceUblkDisabled);
+    FRIEND_TEST(SnapshotUpdateTest, DisableUblkViaManifest);
     friend class SnapshotTest;
     friend class SnapshotUpdateTest;
     friend class FlashAfterUpdateTest;
@@ -490,6 +494,7 @@ class SnapshotManager final : public ISnapshotManager {
 
     // Ensure we're connected to snapuserd.
     bool EnsureSnapuserdConnected(std::chrono::milliseconds timeout_ms = 10s);
+    bool EnsureSnapuserdIsUblk();
 
     // Helpers for first-stage init.
     const std::unique_ptr<IDeviceInfo>& device() const { return device_; }
@@ -735,6 +740,7 @@ class SnapshotManager final : public ISnapshotManager {
     std::string GetOldPartitionMetadataPath();
     std::string GetBootSnapshotsWithoutSlotSwitchPath();
     std::string GetSnapuserdFromSystemPath();
+    std::string GetSnapuserdModeHintFilePath();
 
     bool HasForwardMergeIndicator();
 
