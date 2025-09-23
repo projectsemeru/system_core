@@ -376,12 +376,9 @@ public:
         // among unrelated code in the same process, so code needs to be
         // able to check tags independently.
         OBJECT_TAG_JAVA_PROXY = 0x10000,
-        OBJECT_TAG_NDK_PROXY = 0x20000,
-        OBJECT_TAG_MASK = 0x30000,
+        OBJECT_TAG_MASK = 0x10000,
     };
     static_assert((OBJECT_LIFETIME_MASK & OBJECT_TAG_MASK) == 0, "conflicting values");
-    static_assert((~OBJECT_TAG_MASK & OBJECT_TAG_JAVA_PROXY) == 0, "bad mask for Java tag");
-    static_assert((~OBJECT_TAG_MASK & OBJECT_TAG_NDK_PROXY) == 0, "bad mask for NDK tag");
 
   protected:
     // When constructing these objects, prefer using sp::make<>. Using a RefBase
