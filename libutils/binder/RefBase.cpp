@@ -768,7 +768,7 @@ static int32_t tryTagOldTags(int32_t tag, std::atomic<int32_t>* mFlags) {
     LOG_ALWAYS_FATAL_IF((tag & ~RefBase::OBJECT_TAG_MASK) != 0,
                         "RBSAN: Invalid RefBase tag to tag: %" PRId32, tag);
 
-    int32_t oldFlags = mFlags->fetch_or(tag, std::memory_order_relaxed);
+    int32_t oldFlags = mFlags->fetch_or(tag, std::memory_order_acq_rel);
     int32_t oldTags = oldFlags & RefBase::OBJECT_TAG_MASK;
     return oldTags;
 }
@@ -791,7 +791,7 @@ void RefBase::weakref_type::untag(int32_t tag) {
                         "RBSAN: Invalid RefBase tag to untag: %" PRId32, tag);
 
     int32_t oldFlags =
-            static_cast<weakref_impl*>(this)->mFlags.fetch_and(~tag, std::memory_order_relaxed);
+            static_cast<weakref_impl*>(this)->mFlags.fetch_and(~tag, std::memory_order_acq_rel);
     int32_t oldTags = oldFlags & OBJECT_TAG_MASK;
     LOG_ALWAYS_FATAL_IF((oldTags & tag) == 0,
                         "RBSAN: Can't unset flag %" PRId32 " when it's not set: %" PRId32, tag,
@@ -813,7 +813,7 @@ RefBase::RefBase() : mRefs(ANDROID_NEW(weakref_impl, this)) {}
 
 RefBase::~RefBase()
 {
-    const int32_t flags = mRefs->mFlags.load(std::memory_order_relaxed);
+    const int32_t flags = mRefs->mFlags.load(std::memory_order_acquire);
 
     // NOTE: if 'c' is 2 and 2 tags are set, we could also crash. However, we don't
     // currently as this would require adding additional atomic reads.
