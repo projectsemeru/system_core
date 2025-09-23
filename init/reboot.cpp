@@ -354,19 +354,19 @@ static void KillAllProcesses(bool force) {
 }
 
 static UmountStat UmountPartitions(std::chrono::milliseconds timeout, bool ota_update_in_progress) {
-    // If we have no time left, kill them all as fast as possible by sending SIGKILL. Otherwise
-    // SIGTERM so that they can gracefully exit.
-    bool immediate = timeout == 0ms;
-    // Terminate the services before unmounting partitions. If we have some time left, give them a
-    // chance for a graceful shutdown by sending SIGTERM. If not, kill immediately by sending
-    // SIGKILL.
+    const bool immediate = timeout == 0ms;
+
+    // Terminate the services before unmounting partitions.
     for (const auto& s : ServiceList::GetInstance()) {
         if (s->IsShutdownCritical()) {
             LOG(INFO) << "Shutdown service: " << s->name();
+
+            // Terminate to prevent service restarting
+            s->Terminate();
+
+            // If we have no time left, kill as fast as possible by sending SIGKILL.
             if (immediate) {
                 s->Timeout();
-            } else {
-                s->Terminate();
             }
         }
     }
