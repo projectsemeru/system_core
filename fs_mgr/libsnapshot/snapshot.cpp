@@ -1142,20 +1142,11 @@ bool SnapshotManager::DeleteSnapshot(LockedFile* lock, const std::string& name) 
         return false;
     }
 
-    // If a snapshot has no /data dependency, we can safely remove it in recovery.
-    bool allow_recovery_delete = false;
-    SnapshotStatus status;
-    if (ReadSnapshotStatus(lock, name, &status)) {
-        if (status.cow_file_size() == 0) {
-            allow_recovery_delete = true;
-        }
-    }
-
     // We can't delete snapshots in recovery. The only way we'd try is it we're
     // completing or canceling a merge in preparation for a data wipe, in which
     // case, we don't care if the file sticks around.
-    if (device_->IsRecovery() && !allow_recovery_delete) {
-        LOG(INFO) << "Skipping delete of data-backed snapshot " << name << " in recovery.";
+    if (device_->IsRecovery()) {
+        LOG(INFO) << "Skipping delete of snapshot " << name << " in recovery.";
         return true;
     }
 
