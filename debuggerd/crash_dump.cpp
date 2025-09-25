@@ -520,11 +520,10 @@ static void ReadGuestRegisters(std::unique_ptr<unwindstack::Regs>* regs, pid_t t
 #if defined(__LP64__)
     case NATIVE_BRIDGE_ARCH_ARM64: {
       unwindstack::arm64_user_regs arm64_user_regs = {};
-      for (size_t i = 0; i < unwindstack::ARM64_REG_R31; i++) {
-        arm64_user_regs.regs[i] = guest_regs.regs_arm64.x[i];
-      }
-      arm64_user_regs.sp = guest_regs.regs_arm64.sp;
-      arm64_user_regs.pc = guest_regs.regs_arm64.ip;
+      memcpy(&arm64_user_regs.regs[0], &guest_regs.regs_arm64.x[0],
+             sizeof(uint64_t) * (unwindstack::ARM64_REG_R30 + 1));
+      arm64_user_regs.regs[unwindstack::ARM64_REG_SP] = guest_regs.regs_arm64.sp;
+      arm64_user_regs.regs[unwindstack::ARM64_REG_PC] = guest_regs.regs_arm64.ip;
       regs->reset(unwindstack::RegsArm64::Read(&arm64_user_regs));
 
       g_guest_arch = Architecture::ARM64;
