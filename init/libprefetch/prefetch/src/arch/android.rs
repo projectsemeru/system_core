@@ -7,15 +7,15 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 
-use rustutils::system_properties::error::PropertyWatcherError;
-use rustutils::system_properties::PropertyWatcher;
+use rustutils::android::system_properties::error::PropertyWatcherError;
+use rustutils::android::system_properties::PropertyWatcher;
 
 const PREFETCH_RECORD_PROPERTY_STOP: &str = "prefetch_boot.record_stop";
 
 fn is_prefetch_enabled() -> Result<bool, Error> {
-    rustutils::system_properties::read_bool("ro.prefetch_boot.enabled", false).map_err(|e| {
-        Error::Custom { error: format!("Failed to read ro.prefetch_boot.enabled: {e}") }
-    })
+    rustutils::android::system_properties::read_bool("ro.prefetch_boot.enabled", false).map_err(
+        |e| Error::Custom { error: format!("Failed to read ro.prefetch_boot.enabled: {e}") },
+    )
 }
 
 fn wait_for_property_true(
@@ -47,9 +47,9 @@ pub fn can_perform_replay(pack_path: &Path, fingerprint_path: &Path) -> Result<b
 
     let saved_fingerprint = std::fs::read_to_string(fingerprint_path)?;
 
-    let current_device_fingerprint = rustutils::system_properties::read("ro.build.fingerprint")
-        .map_err(|e| Error::Custom {
-            error: format!("Failed to read ro.build.fingerprint: {e}"),
+    let current_device_fingerprint =
+        rustutils::android::system_properties::read("ro.build.fingerprint").map_err(|e| {
+            Error::Custom { error: format!("Failed to read ro.build.fingerprint: {e}") }
         })?;
 
     Ok(current_device_fingerprint.is_some_and(|fp| fp == saved_fingerprint.trim()))
@@ -92,7 +92,7 @@ pub fn write_build_fingerprint(args: &RecordArgs) -> Result<(), Error> {
         })?;
 
     let device_build_fingerprint =
-        rustutils::system_properties::read("ro.build.fingerprint").unwrap_or_default();
+        rustutils::android::system_properties::read("ro.build.fingerprint").unwrap_or_default();
     let device_build_fingerprint = device_build_fingerprint.unwrap_or_default();
 
     build_fingerprint_file.write_all(device_build_fingerprint.as_bytes())?;
