@@ -110,32 +110,6 @@ static android::base::unique_fd __memfd_create_region(const char *name) {
     return fd;
 }
 
-static bool write_seal_breaks_ro_shared_mmap() {
-    android::base::unique_fd fd(__memfd_create_region("write-sealed-test-memfd"));
-    if (fd == -1) {
-        return true;
-    }
-
-    if (fcntl(fd, F_ADD_SEALS, F_SEAL_WRITE) == -1) {
-        ALOGE("Cannot apply F_SEAL_WRITE to memfd: %m");
-        return true;
-    }
-
-    const size_t page_size = getpagesize();
-
-    // Until Linux kernel version 6.7, there was a bug that prevented memfds sealed with
-    // F_SEAL_WRITE from being mapped as shared and read-only:
-    //
-    // https://lore.kernel.org/all/cover.1697116581.git.lstoakes@gmail.com/T/#m28fbfb0d5727e5693e54a7fb2e0c9ac30e95eca5
-    void* buf = mmap(NULL, page_size, PROT_READ, MAP_SHARED, fd, 0);
-    if (buf == MAP_FAILED) {
-        return true;
-    }
-
-    munmap(buf, page_size);
-    return false;
-}
-
 static bool __has_memfd_support() {
     // Used to force enable memfd usage. In the future this property will be removed once we switch
     // everything over to memfd.
@@ -180,20 +154,6 @@ static bool __has_memfd_support() {
         if (debug_log) {
             ALOGD("Not using memfd: application target SDK version %d < %d the minimum target SDK version required for memfd",
                   app_target_sdk_version, min_sdk_version);
-        }
-        return false;
-    }
-
-    // This has been fixed on all kernels but the fix hasn't been merged into all Android kernels
-    // yet, so detect if this is still an issue. If so, don't use memfd.
-    //
-    // TODO: Remove this when the SDK version is finalized. All devices upgrading/launching with
-    // SDK version 37 must use a kernel that was released at least from December of 2025, which
-    // will have the required fix. This is so that we don't trip over this issue in the development
-    // cycle.
-    if (write_seal_breaks_ro_shared_mmap()) {
-        if (debug_log) {
-            ALOGD("Not using memfd: the kernel has not been patched to allow read-only shared mappings on write-sealed memfds");
         }
         return false;
     }
