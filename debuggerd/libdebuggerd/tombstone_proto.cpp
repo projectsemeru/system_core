@@ -87,9 +87,6 @@ using android::base::StringPrintf;
 // The maximum number of messages to save in the protobuf per file.
 static constexpr size_t kMaxLogMessages = 500;
 
-// Use the demangler from libc++.
-extern "C" char* __cxa_demangle(const char*, char*, size_t*, int* status);
-
 static Architecture get_arch() {
 #if defined(__arm__)
   return Architecture::ARM32;
@@ -506,14 +503,7 @@ void fill_in_backtrace_frame(BacktraceFrame* f, const unwindstack::FrameData& fr
   f->set_sp(frame.sp);
 
   if (!frame.function_name.empty()) {
-    // TODO: Should this happen here, or on the display side?
-    char* demangled_name = __cxa_demangle(frame.function_name.c_str(), nullptr, nullptr, nullptr);
-    if (demangled_name) {
-      f->set_function_name(demangled_name);
-      free(demangled_name);
-    } else {
-      f->set_function_name(frame.function_name);
-    }
+    f->set_function_name(frame.function_name);
   }
 
   f->set_function_offset(frame.function_offset);
@@ -654,11 +644,12 @@ static void dump_thread(Tombstone* tombstone, unwindstack::AndroidUnwinder* unwi
   } else {
     unwind_ret = unwinder->Unwind(thread_info.tid, data);
   }
-  if (!unwind_ret) {
+  if (unwind_ret) {
+    data.DemangleFunctionNames();
+    dump_thread_backtrace(data.frames, thread);
+  } else {
     async_safe_format_log(ANDROID_LOG_ERROR, LOG_TAG, "Unwind failed for tid %d: Error %s",
                           thread_info.tid, data.GetErrorString().c_str());
-  } else {
-    dump_thread_backtrace(data.frames, thread);
   }
   dump_registers(unwinder, *data.saved_initial_regs, thread, memory_dump);
 
@@ -675,6 +666,7 @@ static void dump_thread(Tombstone* tombstone, unwindstack::AndroidUnwinder* unwi
     unwindstack::AndroidUnwinderData guest_data;
     guest_data.saved_initial_regs = std::make_optional<std::unique_ptr<unwindstack::Regs>>();
     if (guest_unwinder->Unwind(thread_info.guest_registers.get(), guest_data)) {
+      guest_data.DemangleFunctionNames();
       dump_thread_backtrace(guest_data.frames, guest_thread);
     } else {
       async_safe_format_log(ANDROID_LOG_ERROR, LOG_TAG,
