@@ -2,28 +2,9 @@ package {
     default_applicable_licenses: ["Android-Apache-2.0"],
 }
 
-soong_config_module_type {
-    name: "libprocessgroup_flag_aware_cc_defaults",
-    module_type: "cc_defaults",
-    config_namespace: "ANDROID",
-    bool_variables: [
-        "cgroup_v2_sys_app_isolation",
-    ],
-    properties: [
-        "cflags",
-    ],
-}
-
-libprocessgroup_flag_aware_cc_defaults {
-    name: "libprocessgroup_build_flags_cc",
+cc_defaults {
+    name: "libprocessgroup_defaults",
     cpp_std: "gnu++23",
-    soong_config_variables: {
-        cgroup_v2_sys_app_isolation: {
-            cflags: [
-                "-DCGROUP_V2_SYS_APP_ISOLATION=true",
-            ],
-        },
-    },
 }
 
 cc_library_headers {
@@ -83,7 +64,7 @@ cc_library {
     export_header_lib_headers: [
         "libprocessgroup_headers",
     ],
-    defaults: ["libprocessgroup_build_flags_cc"],
+    defaults: ["libprocessgroup_defaults"],
     apex_available: [
         "//apex_available:platform",
         "//apex_available:anyapex",
@@ -94,7 +75,7 @@ cc_library {
 cc_test {
     name: "task_profiles_test",
     host_supported: true,
-    defaults: ["libprocessgroup_build_flags_cc"],
+    defaults: ["libprocessgroup_defaults"],
     srcs: [
         "task_profiles_test.cpp",
     ],
