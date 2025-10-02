@@ -244,6 +244,7 @@ cc_defaults {
         export_proto_headers: true,
     },
     static_libs: [
+        "libinit_flags",
         "libueventd_flags",
     ],
 

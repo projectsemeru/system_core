@@ -968,6 +968,11 @@ Init records some boot timing information in system properties.
 > Time after boot in ns (via the CLOCK\_BOOTTIME clock) that the service was
   first started.
 
+`ro.boottime.event.<event-name>`
+> (Needs `com.android.init.flags.enable_init_event_timestamp` to be enabled.)
+  Time after boot in ns (via the CLOCK\_BOOTTIME clock) when the first command
+  for `on <event-name>` began execution.
+
 
 Bootcharting
 ------------

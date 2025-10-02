@@ -34,6 +34,8 @@ class ActionManager {
 
     // Exposed for testing
     ActionManager();
+    ActionManager(std::string property_prefix_for_testing)
+        : property_prefix_for_testing_(std::move(property_prefix_for_testing)) {};
     size_t CheckAllCommands();
 
     void AddAction(std::unique_ptr<Action> action);
@@ -50,6 +52,7 @@ class ActionManager {
     void DumpState() const;
     void ClearQueue();
     auto size() const { return actions_.size(); }
+    void EnableInitEventTimestamp(bool enable) { enables_init_event_timestamp_ = enable; }
 
   private:
     ActionManager(ActionManager const&) = delete;
@@ -61,6 +64,11 @@ class ActionManager {
     mutable std::mutex event_queue_lock_;
     std::queue<const Action*> current_executing_actions_;
     std::size_t current_command_;
+    // feature flag to enable the new `ro.boottime.event.<event>` props
+    bool enables_init_event_timestamp_ = false;
+
+    // Override system property prefix for testing
+    const std::string property_prefix_for_testing_ = "";
 };
 
 }  // namespace init
