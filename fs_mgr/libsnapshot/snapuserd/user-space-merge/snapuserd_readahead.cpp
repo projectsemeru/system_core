@@ -438,7 +438,11 @@ bool ReadAhead::ReapIoCompletions(int pending_ios_to_complete) {
         // by re-populating the SQE entries and submitting the I/O
         // request back. However, we don't do that now; instead we
         // will fallback to synchronous I/O.
-        int ret = io_uring_wait_cqe(ring_.get(), &cqe);
+        int ret;
+        do {
+            ret = io_uring_wait_cqe(ring_.get(), &cqe);
+        } while (ret == -EINTR || ret == -EAGAIN);
+
         if (ret) {
             SNAP_LOG(ERROR) << "Read-ahead - io_uring_wait_cqe failed: " << strerror(-ret);
             status = false;
