@@ -390,12 +390,15 @@ TEST(RefBase, DoubleOwnershipDeath) {
 
 TEST(RefBase, StackOwnershipDeath) {
     bool isDeleted;
+
+    // The death on the stack does not always work, but in such a case, we still abort due to
+    // deletion of the object while a strong reference is taken.
     EXPECT_DEATH(
             {
                 Foo foo(&isDeleted);
                 foo.incStrong(nullptr);
             },
-            "RefBase used with stack pointer argument");
+            "(RefBase used with stack pointer argument|object .* with strong count 1 deleted. Double owned?)");
 }
 
 // Set up a situation in which we race with visit2AndRremove() to delete
