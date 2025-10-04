@@ -63,12 +63,6 @@ namespace init {
 
 namespace {
 
-enum class BootMode {
-    NORMAL_MODE,
-    RECOVERY_MODE,
-    CHARGER_MODE,
-};
-
 void FreeRamdisk(DIR* dir, dev_t dev) {
     int dfd = dirfd(dir);
 
