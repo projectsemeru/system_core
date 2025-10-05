@@ -166,7 +166,6 @@ bool Modprobe::LoadModulesParallel(int num_threads, int mode, bool test_mode) {
     std::vector<std::string> parallel_modules, sequential_modules;
     std::vector<std::thread> threads;
     std::atomic<bool> ret(true);
-    std::atomic<bool> finish(false);
     std::mutex mods_to_load_lock;
     std::condition_variable cv_update_module, cv_load_module;
     int sleeping_threads = 0;
@@ -207,9 +206,9 @@ bool Modprobe::LoadModulesParallel(int num_threads, int mode, bool test_mode) {
                     cv_update_module.notify_one();
 
                 cv_load_module.wait(lock, [&](){
-                    return !parallel_modules.empty() ||
-                           !sequential_modules.empty() ||
-                           finish.load(); });
+                    return mods_with_deps.empty() ||
+                           !parallel_modules.empty() ||
+                           !sequential_modules.empty(); });
 
                 sleeping_threads--;
             }
@@ -292,7 +291,6 @@ bool Modprobe::LoadModulesParallel(int num_threads, int mode, bool test_mode) {
         }
     }
 
-    finish.store(true);
     cv_load_module.notify_all();
 
     for (auto& thread : threads) {
