@@ -28,10 +28,14 @@
  *   mediadrm
  * Whose friendly names do not match the #define statements.
  *
- * This file must only be used for platform (Google managed, and submitted through AOSP), AIDs.  3rd
+ * This file must only be used for platform (Google managed, with partner contributions), AIDs.  3rd
  * party AIDs must be added via config.fs, which will place them in the corresponding partition's
  * passwd and group files.  There are ranges in this file reserved for AIDs for each 3rd party
  * partition, from which the system reads passwd and group files.
+ *
+ * For all services launched by init, the use of ambient capabilities is recommended instead of
+ * configuring caps in config.fs files. https://source.android.com/docs/core/permissions/ambient
+ *
  */
 
 #pragma once
@@ -146,8 +150,8 @@
 #define AID_MMD 1095                 /* uid for memory management daemon */
 #define AID_UPDATE_ENGINE_LOG 1096   /* GID for accessing update_engine logs */
 #define AID_AP_FIRMWARE 1097         /* GID for accessing AP firmware related resources */
-// Additions to this file must be made in AOSP, *not* in internal branches.
-// You will also need to update expect_ids() in bionic/tests/grp_pwd_test.cpp.
+// Additions to this file must be accompanied by updates to expect_ids() in
+// bionic/tests/grp_pwd_test.cpp.
 
 #define AID_SHELL 2000 /* adb and debug shell user */
 #define AID_CACHE 2001 /* cache access */
@@ -176,8 +180,8 @@
 #define AID_UHID 3011         /* Allow read/write to /dev/uhid node */
 #define AID_READTRACEFS 3012  /* Allow tracefs read */
 #define AID_VIRTUALMACHINE 3013 /* Allows VMs to tune for performance*/
-// Additions to this file must be made in AOSP, *not* in internal branches.
-// You will also need to update expect_ids() in bionic/tests/grp_pwd_test.cpp.
+// Additions to this file must be accompanied by updates to expect_ids() in
+// bionic/tests/grp_pwd_test.cpp.
 
 /* The range 5000-5999 is also reserved for vendor partition. */
 #define AID_OEM_RESERVED_2_START 5000
