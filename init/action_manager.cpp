@@ -28,8 +28,6 @@
 namespace android {
 namespace init {
 
-ActionManager::ActionManager() : current_command_(0) {}
-
 size_t ActionManager::CheckAllCommands() {
     size_t failures = 0;
     for (const auto& action : actions_) {
