@@ -576,27 +576,6 @@ static void dump_registers(unwindstack::AndroidUnwinder* unwinder,
       *thread.add_memory_dump() = std::move(dump);
     }
   });
-#if defined(__aarch64__)
-  Register esr;
-  esr.set_name("esr");
-  esr.set_u64(regs->GetExtraRegister(unwindstack::Arm64Reg::ARM64_EXTRA_REG_ESR));
-  *thread.add_registers() = esr;
-#elif defined(__arm__)
-  Register error_code;
-  error_code.set_name("error_code");
-  error_code.set_u64(regs->GetExtraRegister(unwindstack::ArmReg::ARM_EXTRA_REG_ERROR_CODE));
-  *thread.add_registers() = error_code;
-#elif defined(__i386__)
-  Register err;
-  err.set_name("err");
-  err.set_u64(regs->GetExtraRegister(unwindstack::X86Reg::X86_EXTRA_REG_ERR));
-  *thread.add_registers() = err;
-#elif defined(__x86_64__)
-  Register err;
-  err.set_name("err");
-  err.set_u64(regs->GetExtraRegister(unwindstack::X86_64Reg::X86_64_EXTRA_REG_ERR));
-  *thread.add_registers() = err;
-#endif
 }
 
 static void dump_thread_backtrace(std::vector<unwindstack::FrameData>& frames, Thread& thread) {

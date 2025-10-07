@@ -533,7 +533,7 @@ static void ReadGuestRegisters(std::unique_ptr<unwindstack::Regs>* regs, pid_t t
       unwindstack::riscv64_user_regs riscv64_user_regs = {};
       // RISCV64_REG_PC is at the first position.
       riscv64_user_regs.regs[0] = guest_regs.regs_riscv64.ip;
-      for (size_t i = 1; i < unwindstack::RISCV64_REG_REAL_COUNT; i++) {
+      for (size_t i = 1; i < unwindstack::RISCV64_REG_LAST; i++) {
         riscv64_user_regs.regs[i] = guest_regs.regs_riscv64.x[i];
       }
       regs->reset(unwindstack::RegsRiscv64::Read(&riscv64_user_regs, tid));
