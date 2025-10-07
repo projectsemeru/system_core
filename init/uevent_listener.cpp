@@ -195,8 +195,8 @@ void UeventListener::Poll(const ListenerCallback& callback,
     using namespace std::chrono;
 
     pollfd ufd = {
-            .events = POLLIN,
             .fd = device_fd_.get(),
+            .events = POLLIN,
     };
 
     auto start_time = steady_clock::now();
