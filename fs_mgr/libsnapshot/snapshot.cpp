@@ -3980,10 +3980,7 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
     std::string vabc_disable_reason;
     if (!dap_metadata.vabc_enabled()) {
         vabc_disable_reason = "not enabled metadata";
-    } else if (!KernelSupportsCompressedSnapshots()) {
-        vabc_disable_reason = "kernel missing userspace block device support";
     }
-
     // Deduce supported features.
     bool userspace_snapshots = true;
     bool legacy_compression = GetLegacyCompressionEnabledProperty();

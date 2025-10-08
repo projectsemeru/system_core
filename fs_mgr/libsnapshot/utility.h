@@ -129,8 +129,6 @@ std::ostream& operator<<(std::ostream& os, CancelResult);
 void AppendExtent(google::protobuf::RepeatedPtrField<chromeos_update_engine::Extent>* extents,
                   uint64_t start_block, uint64_t num_blocks);
 
-bool KernelSupportsCompressedSnapshots();
-
 bool GetLegacyCompressionEnabledProperty();
 bool GetIouringEnabledProperty();
 bool GetXorCompressionEnabledProperty();
