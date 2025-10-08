@@ -132,7 +132,6 @@ void AppendExtent(google::protobuf::RepeatedPtrField<chromeos_update_engine::Ext
 bool KernelSupportsCompressedSnapshots();
 
 bool GetLegacyCompressionEnabledProperty();
-bool GetUserspaceSnapshotsEnabledProperty();
 bool GetIouringEnabledProperty();
 bool GetXorCompressionEnabledProperty();
 bool GetODirectEnabledProperty();

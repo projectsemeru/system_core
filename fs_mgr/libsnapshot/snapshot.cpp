@@ -3985,7 +3985,7 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
     }
 
     // Deduce supported features.
-    bool userspace_snapshots = CanUseUserspaceSnapshots();
+    bool userspace_snapshots = true;
     bool legacy_compression = GetLegacyCompressionEnabledProperty();
     bool is_legacy_snapuserd = IsVendorFromAndroid12();
 
