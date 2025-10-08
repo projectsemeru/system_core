@@ -258,10 +258,6 @@ bool IsVendorFromAndroid12() {
 }
 
 bool CanUseUserspaceSnapshots() {
-    if (IsDmSnapshotTestingEnabled()) {
-        LOG(INFO) << "Userspace snapshots disabled for testing";
-        return false;
-    }
     return true;
 }
 
@@ -296,11 +292,6 @@ std::string GetOtherPartitionName(const std::string& name) {
 
     auto other_suffix = (suffix == "_a") ? "_b" : "_a";
     return name.substr(0, name.size() - suffix.size()) + other_suffix;
-}
-
-bool IsDmSnapshotTestingEnabled() {
-    auto fetcher = IPropertyFetcher::GetInstance();
-    return fetcher->GetBoolProperty("snapuserd.test.dm.snapshots", false);
 }
 
 static bool IsDebuggable() {
