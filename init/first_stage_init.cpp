@@ -46,6 +46,7 @@
 #include "debug_ramdisk.h"
 #include "first_stage_console.h"
 #include "first_stage_mount.h"
+#include "ota_utils.h"
 #include "reboot_utils.h"
 #include "second_stage_resources.h"
 #include "snapuserd_transition.h"
@@ -333,10 +334,6 @@ static std::unique_ptr<FirstStageMount> CreateFirstStageMount(const std::string&
 }
 
 int FirstStageMain(int argc, char** argv) {
-    if (REBOOT_BOOTLOADER_ON_PANIC) {
-        InstallRebootSignalHandlers();
-    }
-
     boot_clock::time_point start_time = boot_clock::now();
 
     std::vector<std::pair<std::string, int>> errors;
@@ -545,6 +542,8 @@ int FirstStageMain(int argc, char** argv) {
 
         if (!created_devices && !fsm->DoCreateDevices()) {
             LOG(FATAL) << "Failed to create devices required for first stage mount";
+        } else if (REBOOT_BOOTLOADER_ON_PANIC && !AttemptingToBootNewSlot()) {
+            InstallRebootSignalHandlers();
         }
 
         if (!fsm->DoFirstStageMount()) {
