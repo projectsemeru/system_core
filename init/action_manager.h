@@ -33,7 +33,7 @@ class ActionManager {
     static ActionManager& GetInstance();
 
     // Exposed for testing
-    ActionManager();
+    ActionManager() {};
     ActionManager(std::string property_prefix_for_testing)
         : property_prefix_for_testing_(std::move(property_prefix_for_testing)) {};
     size_t CheckAllCommands();
@@ -63,7 +63,7 @@ class ActionManager {
             GUARDED_BY(event_queue_lock_);
     mutable std::mutex event_queue_lock_;
     std::queue<const Action*> current_executing_actions_;
-    std::size_t current_command_;
+    std::size_t current_command_ = 0;
     // feature flag to enable the new `ro.boottime.event.<event>` props
     bool enables_init_event_timestamp_ = false;
 
