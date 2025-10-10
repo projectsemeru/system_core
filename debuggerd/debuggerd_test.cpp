@@ -3354,3 +3354,177 @@ TEST_F(CrasherTest, executable) {
   ASSERT_MATCH(result, R"(Executable: \S*debuggerd_test\S*\n)");
   ASSERT_MATCH(result, R"(Cmdline: TestCommand\n)");
 }
+
+static bool using_scudo() {
+  TemporaryFile tf;
+  if (tf.fd == -1) return false;
+  FILE* fp = fdopen(tf.fd, "w+");
+  if (fp == nullptr) return false;
+  tf.release();
+  if (malloc_info(0, fp) != 0) return false;
+  fclose(fp);
+
+  std::string contents;
+  if (!android::base::ReadFileToString(tf.path, &contents)) return false;
+  return contents.find("scudo") != std::string::npos;
+}
+
+TEST_F(CrasherTest, buffer_overflow_detection_write) {
+#if !defined(__LP64__)
+  // The 32 bit scudo doesn't have guard pages enabled right now.
+  GTEST_SKIP() << "Only supported on 64 bit";
+#endif
+
+  SKIP_WITH_HWASAN << "hwasan detects this case differently";
+
+  if (!using_scudo()) {
+    GTEST_SKIP() << "Only Scudo can detect these errors";
+  }
+
+  StartProcess([]() {
+    // Allocate large enough that should result in a mmap allocation.
+    size_t alloc_size = __builtin_align_up(1'000'000, getpagesize());
+    uint8_t* pointer = reinterpret_cast<uint8_t*>(malloc(alloc_size));
+    ASSERT_TRUE(pointer != nullptr);
+    // Write past the end of the allocation
+    for (size_t i = alloc_size; i < alloc_size + 1; i++) {
+      pointer[i] = 1;
+      EXPECT_EQ(1, pointer[i]);
+    }
+    abort();
+  });
+
+  unique_fd output_fd;
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGSEGV);
+  ASSERT_NO_FATAL_FAILURE(FinishIntercept());
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+  if (mte_supported() && mte_enabled()) {
+    ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Overflow)");
+  } else {
+    ASSERT_MATCH(result, R"(Cause: possible buffer overflow)");
+  }
+}
+
+TEST_F(CrasherTest, buffer_underflow_detection_write) {
+#if !defined(__LP64__)
+  // The 32 bit scudo doesn't have guard pages enabled right now.
+  GTEST_SKIP() << "Only supported on 64 bit";
+#endif
+
+  SKIP_WITH_HWASAN << "hwasan detects this case differently";
+
+  if (!using_scudo()) {
+    GTEST_SKIP() << "Only Scudo can detect these errors";
+  }
+
+  StartProcess([]() {
+    // Allocate large enough that should result in a mmap allocation.
+    size_t alloc_size = __builtin_align_up(1'000'000, getpagesize());
+    uint8_t* pointer = reinterpret_cast<uint8_t*>(malloc(alloc_size));
+    ASSERT_TRUE(pointer != nullptr);
+    // Write before the end of the allocation
+    for (size_t i = 0; i < 10'000; i++) {
+      pointer[-i] = 1;
+      EXPECT_EQ(1, pointer[-i]);
+    }
+    abort();
+  });
+
+  unique_fd output_fd;
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGSEGV);
+  ASSERT_NO_FATAL_FAILURE(FinishIntercept());
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+  if (mte_supported() && mte_enabled()) {
+    ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Underflow)");
+  } else {
+    ASSERT_MATCH(result, R"(Cause: possible buffer underflow)");
+  }
+}
+
+TEST_F(CrasherTest, buffer_overflow_detection_read) {
+#if !defined(__LP64__)
+  // The 32 bit scudo doesn't have guard pages enabled right now.
+  GTEST_SKIP() << "Only supported on 64 bit";
+#endif
+
+  SKIP_WITH_HWASAN << "hwasan detects this case differently";
+
+  if (!using_scudo()) {
+    GTEST_SKIP() << "Only Scudo can detect these errors";
+  }
+
+  StartProcess([]() {
+    // Allocate large enough that should result in a mmap allocation.
+    size_t alloc_size = __builtin_align_up(1'000'000, getpagesize());
+    uint8_t* pointer = reinterpret_cast<uint8_t*>(malloc(alloc_size));
+    ASSERT_TRUE(pointer != nullptr);
+    // Write past the end of the allocation
+    for (size_t i = alloc_size; i < alloc_size + 10'000; i++) {
+      uint8_t value;
+      android::base::DoNotOptimize(value = pointer[i]);
+    }
+    abort();
+  });
+
+  unique_fd output_fd;
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGSEGV);
+  ASSERT_NO_FATAL_FAILURE(FinishIntercept());
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+  if (mte_supported() && mte_enabled()) {
+    ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Overflow)");
+  } else {
+    ASSERT_MATCH(result, R"(Cause: possible buffer overflow)");
+  }
+}
+
+TEST_F(CrasherTest, buffer_underflow_detection_read) {
+#if !defined(__LP64__)
+  // The 32 bit scudo doesn't have guard pages enabled right now.
+  GTEST_SKIP() << "Only supported on 64 bit";
+#endif
+
+  SKIP_WITH_HWASAN << "hwasan detects this case differently";
+
+  if (!using_scudo()) {
+    GTEST_SKIP() << "Only Scudo can detect these errors";
+  }
+
+  StartProcess([]() {
+    // Allocate large enough that should result in a mmap allocation.
+    size_t alloc_size = __builtin_align_up(1'000'000, getpagesize());
+    uint8_t* pointer = reinterpret_cast<uint8_t*>(malloc(alloc_size));
+    ASSERT_TRUE(pointer != nullptr);
+    // Write before the end of the allocation
+    for (size_t i = 0; i < 10'000; i++) {
+      uint8_t value;
+      android::base::DoNotOptimize(value = pointer[-i]);
+    }
+    abort();
+  });
+
+  unique_fd output_fd;
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGSEGV);
+  ASSERT_NO_FATAL_FAILURE(FinishIntercept());
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+  if (mte_supported() && mte_enabled()) {
+    ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Underflow)");
+  } else {
+    ASSERT_MATCH(result, R"(Cause: possible buffer underflow)");
+  }
+}
