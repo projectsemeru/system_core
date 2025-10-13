@@ -55,24 +55,43 @@ static std::atomic<dev_t> __ashmem_rdev;
 /* set to true for verbose logging and other debug  */
 static bool debug_log = false;
 
-/* Determine if memfd can be supported. This is just one-time hardwork
- * which will be cached by the caller.
- */
 static bool __use_memfd() {
-    // Used to turn on/off the detection at runtime, in the future this
-    // property will be removed once we switch everything over to memfd.
-    //
-    // This can be set to true from the adb shell for debugging.
-    if (!android::base::GetBoolProperty("sys.use_memfd", false)) {
+    // Used to force enable memfd usage. In the future this property will be removed once we switch
+    // everything over to memfd.
+    if (android::base::GetBoolProperty("sys.use_memfd", false)) {
         if (debug_log) {
-            ALOGD("sys.use_memfd=false so memfd disabled");
+            ALOGD("sys.use_memfd=true so using memfd");
+        }
+        return true;
+    }
+
+    // Minimum vendor API level and target SDK version required for memfd usage.
+    const int min_vendor_api_level = 202604;
+    const int min_app_target_sdk_version = 37;
+    const int vendor_api_level = android::base::GetIntProperty("ro.vendor.api_level", -1);
+    const int app_target_sdk_version = android_get_application_target_sdk_version();
+
+    if (vendor_api_level < min_vendor_api_level) {
+        if (debug_log) {
+            ALOGD("Not using memfd: device vendor API level %d < %d the minimum vendor API level required for memfd",
+                  vendor_api_level, min_vendor_api_level);
+        }
+        return false;
+    }
+
+    if (app_target_sdk_version < min_app_target_sdk_version) {
+        if (debug_log) {
+            ALOGD("Not using memfd: application target SDK version %d < %d the minimum target SDK version required for memfd",
+                  app_target_sdk_version, min_app_target_sdk_version);
         }
         return false;
     }
 
     if (debug_log) {
-        ALOGD("memfd: device has memfd support, using it");
+        ALOGD("memfd API level requirements satisfied: device vendor API level: %d application target SDK version: %d",
+              vendor_api_level, app_target_sdk_version);
     }
+
     return true;
 }
 
