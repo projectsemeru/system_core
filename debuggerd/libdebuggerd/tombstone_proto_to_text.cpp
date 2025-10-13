@@ -163,11 +163,11 @@ static void print_thread_registers(CallbackType callback, const Tombstone& tombs
       break;
 
     case Architecture::ARM64:
-      special_registers = {"ip", "lr", "sp", "pc", "pst", "esr"};
+      special_registers = {"ip", "lr", "sp", "pc", "pst", "esr", "vg"};
       break;
 
     case Architecture::RISCV64:
-      special_registers = {"ra", "sp", "pc"};
+      special_registers = {"ra", "sp", "pc", "vlenb"};
       break;
 
     case Architecture::X86:
