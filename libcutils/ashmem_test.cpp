@@ -33,7 +33,7 @@
 
 #define SKIP_IF_NOT_USING_MEMFD()                 \
     do {                                          \
-        if (GetParam() && !has_memfd_support()) { \
+        if (GetParam() && !use_memfd()) { \
             GTEST_SKIP();                         \
         }                                         \
     } while (false)
@@ -294,7 +294,7 @@ class SharedMemoryRegionAllocator {
 class AshmemMemfdTest : public testing::TestWithParam<bool>,
                         public SharedMemoryRegionAllocator {
     public:
-        AshmemMemfdTest() : SharedMemoryRegionAllocator(has_memfd_support() && GetParam()) {}
+        AshmemMemfdTest() : SharedMemoryRegionAllocator(use_memfd() && GetParam()) {}
 };
 
 TEST_P(AshmemMemfdTest, ForkTest) {
@@ -427,7 +427,7 @@ class MemfdTest : public ::testing::Test,
      MemfdTest() : SharedMemoryRegionAllocator(true) {}
  protected:
      void SetUp() override {
-        if (!has_memfd_support()) {
+        if (!use_memfd()) {
             GTEST_SKIP() << "No memfd support; skipping memfd tests";
         }
     }
