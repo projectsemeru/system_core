@@ -563,11 +563,11 @@ static int KillProcessGroup(
         std::chrono::steady_clock::time_point until = std::chrono::steady_clock::now() + 2200ms) {
     if (uid < 0) {
         LOG(ERROR) << __func__ << ": invalid UID " << uid;
-        return -1;
+        return -EINVAL;
     }
     if (initialPid <= 0) {
         LOG(ERROR) << __func__ << ": invalid PID " << initialPid;
-        return -1;
+        return -EINVAL;
     }
 
     // Always attempt to send a kill signal to at least the initialPid, at least once, regardless of
@@ -729,11 +729,11 @@ static int createProcessGroupInternal(uid_t uid, pid_t initialPid, std::string c
 int createProcessGroup(uid_t uid, pid_t initialPid, bool memControl) {
     if (uid < 0) {
         LOG(ERROR) << __func__ << ": invalid UID " << uid;
-        return -1;
+        return -EINVAL;
     }
     if (initialPid <= 0) {
         LOG(ERROR) << __func__ << ": invalid PID " << initialPid;
-        return -1;
+        return -EINVAL;
     }
 
     if (memControl && !UsePerAppMemcg()) {
