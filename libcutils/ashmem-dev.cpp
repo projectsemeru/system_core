@@ -214,7 +214,7 @@ int ashmem_valid(int fd) {
     return __ashmem_is_ashmem(fd, false) >= 0;
 }
 
-static int memfd_create_region(const char* name, size_t size) {
+int __memfd_create_region(const char* name, size_t size) {
     // This code needs to build on API levels before 30,
     // so we can't use the libc wrapper.
     android::base::unique_fd fd(syscall(__NR_memfd_create, name, MFD_CLOEXEC | MFD_ALLOW_SEALING));
@@ -241,6 +241,15 @@ static int memfd_create_region(const char* name, size_t size) {
     return fd.release();
 }
 
+int __ashmem_create_region(const char* name, size_t size) {
+    android::base::unique_fd fd(__ashmem_open());
+    if (!fd.ok() || TEMP_FAILURE_RETRY(ioctl(fd, ASHMEM_SET_NAME, name)) < 0 ||
+        TEMP_FAILURE_RETRY(ioctl(fd, ASHMEM_SET_SIZE, size)) < 0) {
+        return -1;
+    }
+    return fd.release();
+}
+
 /*
  * ashmem_create_region - creates a new ashmem region and returns the file
  * descriptor, or <0 on error
@@ -251,17 +260,8 @@ static int memfd_create_region(const char* name, size_t size) {
 int ashmem_create_region(const char* name, size_t size) {
     if (name == NULL) name = "none";
 
-    if (has_memfd_support()) {
-        return memfd_create_region(name, size);
-    }
-
-    android::base::unique_fd fd(__ashmem_open());
-    if (!fd.ok() ||
-        TEMP_FAILURE_RETRY(ioctl(fd, ASHMEM_SET_NAME, name)) < 0 ||
-        TEMP_FAILURE_RETRY(ioctl(fd, ASHMEM_SET_SIZE, size)) < 0) {
-        return -1;
-    }
-    return fd.release();
+    auto create_region = has_memfd_support() ? __memfd_create_region : __ashmem_create_region;
+    return create_region(name, size);
 }
 
 static int memfd_set_prot_region(int fd, int prot) {
