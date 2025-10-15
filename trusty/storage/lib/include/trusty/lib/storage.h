@@ -19,7 +19,7 @@
 #include <interface/storage/storage.h>
 #include <stdint.h>
 
-#define STORAGE_MAX_NAME_LENGTH_BYTES 159
+#define STORAGE_MAX_NAME_LENGTH_BYTES 256
 
 __BEGIN_DECLS
 
