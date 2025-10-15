@@ -400,7 +400,6 @@ init_first_stage_cc_defaults {
         "libfs_mgr",
         "libfec",
         "libfec_rs",
-        "libsquashfs_utils",
         "libcrypto_utils",
         "libavb",
         "liblp",
