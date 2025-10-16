@@ -3355,20 +3355,6 @@ TEST_F(CrasherTest, executable) {
   ASSERT_MATCH(result, R"(Cmdline: TestCommand\n)");
 }
 
-static bool using_scudo() {
-  TemporaryFile tf;
-  if (tf.fd == -1) return false;
-  FILE* fp = fdopen(tf.fd, "w+");
-  if (fp == nullptr) return false;
-  tf.release();
-  if (malloc_info(0, fp) != 0) return false;
-  fclose(fp);
-
-  std::string contents;
-  if (!android::base::ReadFileToString(tf.path, &contents)) return false;
-  return contents.find("scudo") != std::string::npos;
-}
-
 TEST_F(CrasherTest, buffer_overflow_detection_write) {
 #if !defined(__LP64__)
   // The 32 bit scudo doesn't have guard pages enabled right now.
@@ -3377,9 +3363,7 @@ TEST_F(CrasherTest, buffer_overflow_detection_write) {
 
   SKIP_WITH_HWASAN << "hwasan detects this case differently";
 
-  if (!using_scudo()) {
-    GTEST_SKIP() << "Only Scudo can detect these errors";
-  }
+  SKIP_WITHOUT_SCUDO << "Only Scudo can detect these errors";
 
   StartProcess([]() {
     // Allocate large enough that should result in a mmap allocation.
@@ -3417,9 +3401,7 @@ TEST_F(CrasherTest, buffer_underflow_detection_write) {
 
   SKIP_WITH_HWASAN << "hwasan detects this case differently";
 
-  if (!using_scudo()) {
-    GTEST_SKIP() << "Only Scudo can detect these errors";
-  }
+  SKIP_WITHOUT_SCUDO << "Only Scudo can detect these errors";
 
   StartProcess([]() {
     // Allocate large enough that should result in a mmap allocation.
@@ -3457,9 +3439,7 @@ TEST_F(CrasherTest, buffer_overflow_detection_read) {
 
   SKIP_WITH_HWASAN << "hwasan detects this case differently";
 
-  if (!using_scudo()) {
-    GTEST_SKIP() << "Only Scudo can detect these errors";
-  }
+  SKIP_WITHOUT_SCUDO << "Only Scudo can detect these errors";
 
   StartProcess([]() {
     // Allocate large enough that should result in a mmap allocation.
@@ -3497,9 +3477,7 @@ TEST_F(CrasherTest, buffer_underflow_detection_read) {
 
   SKIP_WITH_HWASAN << "hwasan detects this case differently";
 
-  if (!using_scudo()) {
-    GTEST_SKIP() << "Only Scudo can detect these errors";
-  }
+  SKIP_WITHOUT_SCUDO << "Only Scudo can detect these errors";
 
   StartProcess([]() {
     // Allocate large enough that should result in a mmap allocation.
