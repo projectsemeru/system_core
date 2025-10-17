@@ -1186,7 +1186,7 @@ std::string_view CalculateBootCompletePrefix() {
 void RecordInitBootTimeProp(BootEventRecordStore* boot_event_store, const std::string& property) {
   auto value = android::base::GetProperty(property, "");
 
-  int32_t time_in_ms;
+  int64_t time_in_ms;
   if (!android::base::ParseInt(value, &time_in_ms)) {
     return;
   }
@@ -1197,7 +1197,7 @@ void RecordInitBootTimeProp(BootEventRecordStore* boot_event_store, const std::s
     time_in_ms /= 1000000;
   }
 
-  boot_event_store->AddBootEventWithValue(property, time_in_ms);
+  boot_event_store->AddBootEventWithValue(property, static_cast<int32_t>(time_in_ms));
 }
 
 // A map from bootloader timing stage to the time that stage took during boot.
