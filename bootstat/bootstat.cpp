@@ -159,14 +159,9 @@ void LogBootEvents() {
                                               static_cast<int32_t>(info->second.event),
                                               static_cast<int32_t>(event.second));
       } else {
-        int64_t value = static_cast<int64_t>(event.second);
-        // ro.boottime.init is recorded in ns, but we want to report it to
-        // statsd in ms.
-        if (name == "ro.boottime.init") {
-          value /= 1000000;
-        }
         android::util::bootstats::stats_write(static_cast<int32_t>(info->second.atom),
-                                              static_cast<int32_t>(info->second.event), value);
+                                              static_cast<int32_t>(info->second.event),
+                                              static_cast<int64_t>(event.second));
       }
     } else {
       notSupportedEvents.push_back(name);
@@ -1188,13 +1183,21 @@ std::string_view CalculateBootCompletePrefix() {
 }
 
 // Records the value of a given ro.boottime.init property in milliseconds.
-void RecordInitBootTimeProp(BootEventRecordStore* boot_event_store, const char* property) {
+void RecordInitBootTimeProp(BootEventRecordStore* boot_event_store, const std::string& property) {
   auto value = android::base::GetProperty(property, "");
 
   int32_t time_in_ms;
-  if (android::base::ParseInt(value, &time_in_ms)) {
-    boot_event_store->AddBootEventWithValue(property, time_in_ms);
+  if (!android::base::ParseInt(value, &time_in_ms)) {
+    return;
   }
+
+  // ro.boottime.init is recorded in ns, but we want to report it to
+  // statsd in ms.
+  if (property == "ro.boottime.init") {
+    time_in_ms /= 1000000;
+  }
+
+  boot_event_store->AddBootEventWithValue(property, time_in_ms);
 }
 
 // A map from bootloader timing stage to the time that stage took during boot.
