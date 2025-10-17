@@ -89,11 +89,12 @@ struct MergeGroupState {
     // Ref count I/O when group state
     // is in "GROUP_MERGE_PENDING"
     size_t num_ios_in_progress;
+    bool reconstructed_from_cow;
     std::mutex m_lock;
     std::condition_variable m_cv;
 
     MergeGroupState(MERGE_GROUP_STATE state, size_t n_ios)
-        : merge_state_(state), num_ios_in_progress(n_ios) {}
+        : merge_state_(state), num_ios_in_progress(n_ios), reconstructed_from_cow(false) {}
 };
 
 class SnapshotHandler : public std::enable_shared_from_this<SnapshotHandler> {
@@ -181,6 +182,7 @@ class SnapshotHandler : public std::enable_shared_from_this<SnapshotHandler> {
     void NotifyIOCompletion(uint64_t new_block);
     bool GetRABuffer(std::unique_lock<std::mutex>* lock, uint64_t block, void* buffer);
     MERGE_GROUP_STATE ProcessMergingBlock(uint64_t new_block, void* buffer);
+    void SetReconstructedFromCow(uint64_t block);
 
     bool IsIouringSupported();
     bool CheckPartitionVerification();
@@ -215,10 +217,7 @@ class SnapshotHandler : public std::enable_shared_from_this<SnapshotHandler> {
     std::mutex lock_;
     std::condition_variable cv;
 
-    // Lock the buffer used for snapshot-merge.
-    //
-    // Lock ordering: If both buffer_lock_ and MergeGroupState::m_lock need
-    // to be held, buffer_lock_ MUST be acquired first.
+    // Lock for the read ahead buffer and read_ahead_buffer_map_.
     std::mutex buffer_lock_;
 
     void* mapped_addr_;

@@ -700,7 +700,6 @@ MERGE_GROUP_STATE SnapshotHandler::ProcessMergingBlock(uint64_t new_block, void*
     int ra_index = it->second;
     MergeGroupState* blk_state = merge_blk_state_[ra_index].get();
     {
-        std::lock_guard<std::mutex> buffer_lock(GetBufferLock());
         std::unique_lock<std::mutex> lock(blk_state->m_lock);
 
         MERGE_GROUP_STATE state = blk_state->merge_state_;
@@ -712,8 +711,11 @@ MERGE_GROUP_STATE SnapshotHandler::ProcessMergingBlock(uint64_t new_block, void*
                 // We must check for and prioritize this data
                 // from the scratch space over the source block, especially
                 // for overlapping blocks or XOR ops.
-                if (GetRABuffer(&lock, new_block, buffer)) {
-                    return (MERGE_GROUP_STATE::GROUP_MERGE_IN_PROGRESS);
+                if (blk_state->reconstructed_from_cow) {
+                    std::lock_guard<std::mutex> buffer_lock(GetBufferLock());
+                    if (GetRABuffer(&lock, new_block, buffer)) {
+                        return (MERGE_GROUP_STATE::GROUP_MERGE_IN_PROGRESS);
+                    }
                 }
                 blk_state->num_ios_in_progress += 1;  // ref count
                 [[fallthrough]];
@@ -729,6 +731,7 @@ MERGE_GROUP_STATE SnapshotHandler::ProcessMergingBlock(uint64_t new_block, void*
                 [[fallthrough]];
             }
             case MERGE_GROUP_STATE::GROUP_MERGE_IN_PROGRESS: {
+                std::lock_guard<std::mutex> buffer_lock(GetBufferLock());
                 if (!GetRABuffer(&lock, new_block, buffer)) {
                     return MERGE_GROUP_STATE::GROUP_INVALID;
                 }

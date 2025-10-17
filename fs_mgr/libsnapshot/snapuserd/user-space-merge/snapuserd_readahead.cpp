@@ -155,6 +155,7 @@ bool ReadAhead::ReconstructDataFromCow() {
     loff_t start_data_offset = snapuserd_->GetBufferDataOffset();
     int num_ops = 0;
     int total_blocks_merged = 0;
+    std::optional<uint64_t> first_reconstructed_block;
 
     // This memcpy is important as metadata_buffer_ will be an unaligned address and will fault
     // on 32-bit systems
@@ -174,6 +175,13 @@ bool ReadAhead::ReconstructDataFromCow() {
         loff_t buffer_offset = bm->file_offset - start_data_offset;
         void* bufptr = static_cast<void*>((char*)read_ahead_buffer_ + buffer_offset);
         read_ahead_buffer_map[bm->new_block] = bufptr;
+        // save the first reconstructed block so we can later mark the corresponding
+        // RA index as recovered. This will help us narrow down look up in RA buffer
+        // while serving the io. Only first block is sufficient as we only recover
+        // one RA index.
+        if (!first_reconstructed_block) {
+            first_reconstructed_block = bm->new_block;
+        }
         num_ops += 1;
         total_blocks_merged += 1;
 
@@ -206,6 +214,13 @@ bool ReadAhead::ReconstructDataFromCow() {
     }
 
     lock.unlock();
+
+    if (first_reconstructed_block) {
+        // This is needed to avoid looking into the RA buffer for all pending IOs
+        // and narrows down the lookup call for only IOs on blocks which happened to be
+        // in this recovered/reconstructed buffer. See b/453693310 for more details.
+        snapuserd_->SetReconstructedFromCow(*first_reconstructed_block);
+    }
 
     snapuserd_->SetMergedBlockCountForNextCommit(total_blocks_merged);
 

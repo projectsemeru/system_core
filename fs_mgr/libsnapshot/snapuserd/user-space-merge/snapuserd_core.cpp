@@ -77,6 +77,20 @@ std::unique_ptr<CowReader> SnapshotHandler::CloneReaderForWorker() {
     return reader_->CloneCowReader();
 }
 
+void SnapshotHandler::SetReconstructedFromCow(uint64_t block) {
+    auto it = block_to_ra_index_.find(block);
+    if (it == block_to_ra_index_.end()) {
+        SNAP_LOG(ERROR) << "Failed to find ra_index for reconstructed block: " << block;
+        return;
+    }
+
+    int ra_index = it->second;
+    MergeGroupState* blk_state = merge_blk_state_[ra_index].get();
+    std::lock_guard<std::mutex> lock(blk_state->m_lock);
+    blk_state->reconstructed_from_cow = true;
+    SNAP_LOG(INFO) << "RA-Index: " << ra_index << " marked as reconstructed from COW.";
+}
+
 void SnapshotHandler::UpdateMergeCompletionPercentage() {
     struct CowHeader* ch = reinterpret_cast<struct CowHeader*>(mapped_addr_);
     merge_completion_percentage_ = (ch->num_merge_ops * 100.0) / reader_->get_num_total_data_ops();
@@ -245,7 +259,7 @@ bool SnapshotHandler::ReadMetadata() {
                    << " Total-data-ops: " << reader_->get_num_total_data_ops()
                    << " Unmerged-ops: " << chunk_vec_.size() << " Copy-ops: " << copy_ops
                    << " Zero-ops: " << zero_ops << " Replace-ops: " << replace_ops
-                   << " Xor-ops: " << xor_ops;
+                   << " Xor-ops: " << xor_ops << " Resuming previous merge: " << resume_merge_;
 
     return true;
 }
