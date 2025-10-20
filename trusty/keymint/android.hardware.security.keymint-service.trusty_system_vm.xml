@@ -13,4 +13,8 @@
         <version>3</version>
         <fqname>IRemotelyProvisionedComponent/default</fqname>
     </hal>
+    <hal format="aidl" updatable-via-system="true">
+        <name>android.hardware.security.factory_reset_protection</name>
+        <fqname>IFactoryResetProtection/default</fqname>
+    </hal>
 </manifest>
