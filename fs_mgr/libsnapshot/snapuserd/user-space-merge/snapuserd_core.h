@@ -179,10 +179,18 @@ class SnapshotHandler : public std::enable_shared_from_this<SnapshotHandler> {
     void SetMergeCompleted(size_t block_index);
     void SetMergeInProgress(size_t block_index);
     void SetMergeFailed(size_t block_index);
-    void NotifyIOCompletion(uint64_t new_block);
+    void NotifyIOCompletion(int ra_index);
     bool GetRABuffer(std::unique_lock<std::mutex>* lock, uint64_t block, void* buffer);
-    MERGE_GROUP_STATE ProcessMergingBlock(uint64_t new_block, void* buffer);
+    MERGE_GROUP_STATE ProcessMergingBlock(uint64_t new_block, int ra_index, void* buffer);
     void SetReconstructedFromCow(uint64_t block);
+
+    std::optional<int> FindRaIndex(uint64_t block) const {
+        auto it = block_to_ra_index_.find(block);
+        if (it == block_to_ra_index_.end()) {
+            return std::nullopt;
+        }
+        return it->second;
+    }
 
     bool IsIouringSupported();
     bool CheckPartitionVerification();
