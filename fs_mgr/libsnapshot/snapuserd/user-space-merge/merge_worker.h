@@ -57,6 +57,7 @@ class MergeWorker : public Worker {
     // don't want huge queue depth
     int queue_depth_ = 8;
     uint32_t cow_op_merge_size_ = 0;
+    unique_fd async_base_path_merge_fd_;
 };
 
 }  // namespace snapshot

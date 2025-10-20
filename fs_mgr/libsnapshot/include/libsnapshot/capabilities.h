@@ -22,5 +22,9 @@ namespace snapshot {
 // Returns true if we should be using UBLK
 bool IsUblkEnabled();
 
+constexpr const char* kSnapuserdModeHintFile = "/metadata/ota/snapuserd_mode";
+constexpr const char* kSnapuserdModeUblk = "ublk";
+constexpr const char* kSnapuserdModeDmUser = "dm-user";
+
 }  // namespace snapshot
 }  // namespace android

@@ -43,11 +43,11 @@ class SnapuserdClient {
     bool ValidateConnection();
     std::string GetDaemonAliveIndicatorPath();
 
-    void WaitForServiceToTerminate(std::chrono::milliseconds timeout_ms);
-
   public:
     explicit SnapuserdClient(android::base::unique_fd&& sockfd);
     SnapuserdClient(){};
+
+    void WaitForServiceToTerminate(std::chrono::milliseconds timeout_ms);
 
     // Attempt to connect to snapsuerd, wait for the daemon to start if
     // connection failed.
@@ -115,6 +115,10 @@ class SnapuserdClient {
 
     // Resume Merge threads
     bool ResumeMerge();
+
+    // Returns the snapuserd mode: "dm-user" or "ublk"
+    std::string GetSnapuserdMode();
+
     // Returns true if snapuserd instance supports UBLK snapshots
     bool SupportsUblk();
 };

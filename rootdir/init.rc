@@ -287,6 +287,7 @@ on init
     write /proc/sys/kernel/sched_child_runs_first 0
 
     write /proc/sys/kernel/randomize_va_space 2
+    write /proc/sys/kernel/kptr_restrict 2
     write /proc/sys/vm/mmap_min_addr 32768
     write /proc/sys/net/ipv4/ping_group_range "0 2147483647"
     write /proc/sys/net/unix/max_dgram_qlen 2400
@@ -1081,7 +1082,16 @@ on property:vold.checkpoint_committed=1
 # stuff) and we absolutely want to be before netd and the system boot slot is
 # considered to have booted successfully.
 on load-bpf-programs
+    # Temporarily relax access to kallsyms so that bpfloader can resolve kernel symbols
+    # at load time.
+    #
+    # NOTE: Still requires CAP_SYSLOG and sepolicy allow rules to read /proc/kallsyms
+    write /proc/sys/kernel/kptr_restrict 1
+
     exec_start bpfloader
+
+    # Restore kallsyms protection after bpf programs have been loaded.
+    write /proc/sys/kernel/kptr_restrict 2
 
 on bpf-progs-loaded
     start netd
@@ -1236,7 +1246,7 @@ on property:sys.boot_completed=1
     bootchart stop
     # Setup per_boot directory so other .rc could start to use it on boot_completed
     exec - system system -- /bin/rm -rf /data/per_boot
-    mkdir /data/per_boot 0700 system system encryption=Require key=per_boot_ref
+    mkdir /data/per_boot 0710 system system encryption=Require key=per_boot_ref
 
 # system server cannot write to /proc/sys files,
 # and chown/chmod does not work for /proc/sys/ entries.
@@ -1253,41 +1263,7 @@ on property:perf.drop_caches=3
 on property:net.tcp_def_init_rwnd=*
     write /proc/sys/net/ipv4/tcp_default_init_rwnd ${net.tcp_def_init_rwnd}
 
-# perf_event_open syscall security:
-# Newer kernels have the ability to control the use of the syscall via SELinux
-# hooks. init tests for this, and sets sys_init.perf_lsm_hooks to 1 if the
-# kernel has the hooks. In this case, the system-wide perf_event_paranoid
-# sysctl is set to -1 (unrestricted use), and the SELinux policy is used for
-# controlling access. On older kernels, the paranoid value is the only means of
-# controlling access. It is normally 3 (allow only root), but the shell user
-# can lower it to 1 (allowing thread-scoped pofiling) via security.perf_harden.
-on load-bpf-programs && property:sys.init.perf_lsm_hooks=1
-    write /proc/sys/kernel/perf_event_paranoid -1
-on property:security.perf_harden=0 && property:sys.init.perf_lsm_hooks=""
-    write /proc/sys/kernel/perf_event_paranoid 1
-on property:security.perf_harden=1 && property:sys.init.perf_lsm_hooks=""
-    write /proc/sys/kernel/perf_event_paranoid 3
-
-# Additionally, simpleperf profiler uses debug.* and security.perf_harden
-# sysprops to be able to indirectly set these sysctls.
-on property:security.perf_harden=0
-    write /proc/sys/kernel/perf_event_max_sample_rate ${debug.perf_event_max_sample_rate:-100000}
-    write /proc/sys/kernel/perf_cpu_time_max_percent ${debug.perf_cpu_time_max_percent:-25}
-    write /proc/sys/kernel/perf_event_mlock_kb ${debug.perf_event_mlock_kb:-516}
-# Default values.
-on property:security.perf_harden=1
-    write /proc/sys/kernel/perf_event_max_sample_rate 100000
-    write /proc/sys/kernel/perf_cpu_time_max_percent 25
-    write /proc/sys/kernel/perf_event_mlock_kb 516
-
-# This property can be set only on userdebug/eng. See neverallow rule in
-# /system/sepolicy/private/property.te .
-on property:security.lower_kptr_restrict=1
-    write /proc/sys/kernel/kptr_restrict 0
-
-on property:security.lower_kptr_restrict=0
-    write /proc/sys/kernel/kptr_restrict 2
-
+import /system/etc/init/init-perfetto.rc
 
 # on shutdown
 # In device's init.rc, this trigger can be used to do device-specific actions

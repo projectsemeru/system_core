@@ -947,6 +947,22 @@ static void property_initialize_ro_product_props() {
     }
 }
 
+static void initialize_microdroid_properties(std::map<std::string, std::string>* properties) {
+    if (properties == NULL || !IsMicrodroid()) {
+        return;
+    }
+
+    char hostname_cstr[HOST_NAME_MAX];
+    if (gethostname(hostname_cstr, sizeof(hostname_cstr)) != 0) {
+        PLOG(ERROR) << "Failed to gethostname";
+        return;
+    }
+    const std::string hostname(hostname_cstr);
+    if (hostname != "localhost") {
+        (*properties)["ro.product.name"] = hostname;
+    }
+}
+
 // If the ro.build.fingerprint property has not been set, derive it from constituent pieces
 static void property_derive_build_fingerprint() {
     std::string build_fingerprint = GetProperty("ro.build.fingerprint", "");
@@ -1066,12 +1082,18 @@ static void property_initialize_ro_vendor_api_level() {
         return;
     }
 
-    auto vendor_api_level = GetIntProperty("ro.board.first_api_level", __ANDROID_VENDOR_API_MAX__);
-    if (vendor_api_level != __ANDROID_VENDOR_API_MAX__) {
-        // Update the vendor_api_level with "ro.board.api_level" only if both "ro.board.api_level"
-        // and "ro.board.first_api_level" are defined.
-        vendor_api_level = GetIntProperty("ro.board.api_level", vendor_api_level);
-    }
+    const auto board_first_api_level =
+            GetIntProperty("ro.board.first_api_level", __ANDROID_VENDOR_API_MAX__);
+    const bool is_frozen_chipset = board_first_api_level != __ANDROID_VENDOR_API_MAX__;
+
+    // In Android U and earlier, ro.board.api_level may not be defined, so use the first api level
+    // instead.
+    const auto board_api_level = GetIntProperty("ro.board.api_level", board_first_api_level);
+
+    // If the chipset is frozen, ro.vendor.api_level may be lowered to the board API level, since
+    // the vendor image is frozen and not expected to change anymore.
+    const auto effective_board_api_level =
+            is_frozen_chipset ? board_api_level : __ANDROID_VENDOR_API_MAX__;
 
     auto product_first_api_level =
             GetIntProperty("ro.product.first_api_level", __ANDROID_API_FUTURE__);
@@ -1080,8 +1102,8 @@ static void property_initialize_ro_vendor_api_level() {
         product_first_api_level = GetIntProperty("ro.build.version.sdk", __ANDROID_API_FUTURE__);
     }
 
-    vendor_api_level =
-            std::min(AVendorSupport_getVendorApiLevelOf(product_first_api_level), vendor_api_level);
+    auto vendor_api_level = std::min(AVendorSupport_getVendorApiLevelOf(product_first_api_level),
+                                     effective_board_api_level);
 
     if (vendor_api_level < 0) {
         LOG(ERROR) << "Unexpected vendor api level for " << VENDOR_API_LEVEL_PROP << ". Check "
@@ -1182,6 +1204,7 @@ void PropertyLoadBootDefaults() {
         }
     }
 
+    initialize_microdroid_properties(&properties);
     for (const auto& [name, value] : properties) {
         std::string error;
         if (PropertySetNoSocket(name, value, &error) != PROP_SUCCESS) {

@@ -171,7 +171,7 @@ bool MergeWorker::MergeReplaceZeroOps() {
 
         if (num_ops_merged >= total_ops_merged_per_commit) {
             // Flush the data
-            if (fsync(base_path_merge_fd_.get()) < 0) {
+            if (TEMP_FAILURE_RETRY(fsync(base_path_merge_fd_.get())) < 0) {
                 SNAP_LOG(ERROR) << "Merge: ReplaceZeroOps: Failed to fsync merged data";
                 return false;
             }
@@ -202,7 +202,7 @@ bool MergeWorker::MergeReplaceZeroOps() {
     // Any left over ops not flushed yet.
     if (num_ops_merged) {
         // Flush the data
-        if (fsync(base_path_merge_fd_.get()) < 0) {
+        if (TEMP_FAILURE_RETRY(fsync(base_path_merge_fd_.get())) < 0) {
             SNAP_LOG(ERROR) << "Merge: ReplaceZeroOps: Failed to fsync merged data";
             return false;
         }
@@ -239,11 +239,6 @@ bool MergeWorker::MergeOrderedOpsAsync() {
             return false;
         }
 
-        std::optional<std::lock_guard<std::mutex>> buffer_lock;
-        // Acquire the buffer lock at this point so that RA thread
-        // doesn't step into this buffer. See b/377819507
-        buffer_lock.emplace(snapuserd_->GetBufferLock());
-
         snapuserd_->SetMergeInProgress(ra_block_index_);
 
         loff_t offset = 0;
@@ -270,7 +265,7 @@ bool MergeWorker::MergeOrderedOpsAsync() {
                     return false;
                 }
 
-                io_uring_prep_write(sqe, base_path_merge_fd_.get(),
+                io_uring_prep_write(sqe, async_base_path_merge_fd_.get(),
                                     (char*)read_ahead_buffer + offset, io_size, source_offset);
 
                 offset += io_size;
@@ -310,7 +305,7 @@ bool MergeWorker::MergeOrderedOpsAsync() {
                             SNAP_PLOG(ERROR) << "io_uring_get_sqe failed during merge-ordered ops";
                             flush_required = true;
                         } else {
-                            io_uring_prep_fsync(sqe, base_path_merge_fd_.get(), 0);
+                            io_uring_prep_fsync(sqe, async_base_path_merge_fd_.get(), 0);
                             // Drain the queue before fsync
                             io_uring_sqe_set_flags(sqe, IOSQE_IO_DRAIN);
                             pending_sqe -= 1;
@@ -346,7 +341,11 @@ bool MergeWorker::MergeOrderedOpsAsync() {
                     // by re-populating the SQE entries and submitting the I/O
                     // request back. However, we don't do that now; instead we
                     // will fallback to synchronous I/O.
-                    ret = io_uring_wait_cqe(ring_.get(), &cqe);
+                    int ret;
+                    do {
+                        ret = io_uring_wait_cqe(ring_.get(), &cqe);
+                    } while (ret == -EINTR || ret == -EAGAIN);
+
                     if (ret) {
                         SNAP_LOG(ERROR) << "Merge: io_uring_wait_cqe failed: " << strerror(-ret);
                         status = false;
@@ -379,7 +378,7 @@ bool MergeWorker::MergeOrderedOpsAsync() {
         CHECK(num_ops == 0);
 
         // Flush the data
-        if (flush_required && (fsync(base_path_merge_fd_.get()) < 0)) {
+        if (flush_required && (TEMP_FAILURE_RETRY(fsync(async_base_path_merge_fd_.get())) < 0)) {
             SNAP_LOG(ERROR) << " Failed to fsync merged data";
             return false;
         }
@@ -398,9 +397,6 @@ bool MergeWorker::MergeOrderedOpsAsync() {
 
         // Mark the block as merge complete
         snapuserd_->SetMergeCompleted(ra_block_index_);
-
-        // Release the buffer lock
-        buffer_lock.reset();
 
         // Notify RA thread that the merge thread is ready to merge the next
         // window
@@ -433,11 +429,6 @@ bool MergeWorker::MergeOrderedOps() {
             snapuserd_->SetMergeFailed(ra_block_index_);
             return false;
         }
-
-        std::optional<std::lock_guard<std::mutex>> buffer_lock;
-        // Acquire the buffer lock at this point so that RA thread
-        // doesn't step into this buffer. See b/377819507
-        buffer_lock.emplace(snapuserd_->GetBufferLock());
 
         snapuserd_->SetMergeInProgress(ra_block_index_);
 
@@ -474,7 +465,7 @@ bool MergeWorker::MergeOrderedOps() {
         CHECK(num_ops == 0);
 
         // Flush the data
-        if (fsync(base_path_merge_fd_.get()) < 0) {
+        if (TEMP_FAILURE_RETRY(fsync(base_path_merge_fd_.get())) < 0) {
             SNAP_LOG(ERROR) << " Failed to fsync merged data";
             snapuserd_->SetMergeFailed(ra_block_index_);
             return false;
@@ -494,9 +485,6 @@ bool MergeWorker::MergeOrderedOps() {
         SNAP_LOG(DEBUG) << "Block commit of size: " << snapuserd_->GetTotalBlocksToMerge();
         // Mark the block as merge complete
         snapuserd_->SetMergeCompleted(ra_block_index_);
-
-        // Release the buffer lock
-        buffer_lock.reset();
 
         // Notify RA thread that the merge thread is ready to merge the next
         // window
@@ -545,6 +533,9 @@ bool MergeWorker::Merge() {
     if (merge_async_) {
         ordered_ops_merge_status = AsyncMerge();
         if (!ordered_ops_merge_status) {
+            if (TEMP_FAILURE_RETRY(fsync(async_base_path_merge_fd_.get())) < 0) {
+                SNAP_PLOG(ERROR) << "Failed to fsync async merge fd";
+            }
             FinalizeIouring();
             retry = true;
             merge_async_ = false;
@@ -586,6 +577,12 @@ bool MergeWorker::InitializeIouring() {
         return false;
     }
 
+    async_base_path_merge_fd_.reset(TEMP_FAILURE_RETRY(dup(base_path_merge_fd_.get())));
+    if (async_base_path_merge_fd_ < 0) {
+        SNAP_PLOG(ERROR) << "Failed to dup base path fd for async merge";
+        return false;
+    }
+
     ring_ = std::make_unique<struct io_uring>();
 
     if (!InitializeUringForMerge(ring_.get(), queue_depth_)) {
@@ -601,6 +598,7 @@ bool MergeWorker::InitializeIouring() {
 void MergeWorker::FinalizeIouring() {
     if (merge_async_) {
         io_uring_queue_exit(ring_.get());
+        async_base_path_merge_fd_.reset();
     }
 }
 

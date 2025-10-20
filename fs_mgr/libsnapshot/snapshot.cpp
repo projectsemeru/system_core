@@ -44,6 +44,7 @@
 #include <libfiemap/image_manager.h>
 #include <liblp/liblp.h>
 #include <liblp/property_fetcher.h>
+#include <linux/fs.h>
 
 #include <android/snapshot/snapshot.pb.h>
 #include <libsnapshot/capabilities.h>
@@ -379,6 +380,7 @@ bool SnapshotManager::RemoveAllUpdateState(LockedFile* lock, const std::function
             GetSnapshotBootIndicatorPath(),          GetRollbackIndicatorPath(),
             GetForwardMergeIndicatorPath(),          GetOldPartitionMetadataPath(),
             GetBootSnapshotsWithoutSlotSwitchPath(), GetSnapuserdFromSystemPath(),
+            GetSnapuserdModeHintFilePath(),
     };
     for (const auto& file : files) {
         RemoveFileIfExists(file);
@@ -787,12 +789,68 @@ bool SnapshotManager::MapUserspaceCowDmUser(
     return true;
 }
 
+bool SnapshotManager::EnsureSnapuserdIsUblk() {
+    if (!EnsureSnapuserdConnected()) {
+        LOG(ERROR) << "Failed to connect to snapuserd.";
+        return false;
+    }
+
+    std::string mode = snapuserd_client_->GetSnapuserdMode();
+    if (mode == kSnapuserdModeUblk) {
+        return true;
+    }
+
+    if (mode == kSnapuserdModeDmUser) {
+        LOG(INFO) << "snapuserd is in dm-user mode. Restarting in ublk mode.";
+
+        if (!snapuserd_client_->StopSnapuserd()) {
+            LOG(ERROR) << "Failed to stop snapuserd. Cannot switch to ublk mode.";
+            return false;
+        }
+
+        snapuserd_client_->WaitForServiceToTerminate(5s);
+        if (android::base::GetProperty("init.svc.snapuserd", "") == "running") {
+            LOG(ERROR) << "snapuserd did not stop after 5s.";
+            return false;
+        }
+        LOG(INFO) << "snapuserd stopped.";
+
+        snapuserd_client_ = nullptr;
+
+        if (!WriteSnapuserdModeHint(kSnapuserdModeUblk)) {
+            LOG(ERROR) << "Failed to write snapuserd ublk mode hint file.";
+            return false;
+        }
+
+        if (!EnsureSnapuserdConnected()) {
+            LOG(ERROR) << "Failed to reconnect to snapuserd after restarting.";
+            return false;
+        }
+
+        mode = snapuserd_client_->GetSnapuserdMode();
+        if (mode != kSnapuserdModeUblk) {
+            LOG(ERROR) << "Failed to restart snapuserd in ublk mode. Current mode: " << mode;
+            return false;
+        }
+
+        LOG(INFO) << "Successfully restarted snapuserd in ublk mode.";
+        return true;
+    }
+
+    LOG(ERROR) << "snapuserd is in an unknown or error state. Mode: '" << mode << "'";
+    return false;
+}
+
 bool SnapshotManager::MapUserspaceCowUblk(const std::string& name, const std::string& misc_name,
                                           const std::string& cow_file,
                                           const std::string& base_device,
                                           const std::string& base_path_merge, uint64_t base_sectors,
                                           const std::chrono::milliseconds& timeout_ms,
                                           std::string* out_final_path) {
+    if (!EnsureSnapuserdIsUblk()) {
+        LOG(ERROR) << "Failed to ensure snapuserd is running in ublk mode.";
+        return false;
+    }
     // Step 1: Ublk prerequisites and initial device creation request
     if (!HandleUblkDeviceCreation(misc_name, base_sectors, timeout_ms)) {
         return false;
@@ -831,6 +889,16 @@ bool SnapshotManager::MapUserspaceCowUblk(const std::string& name, const std::st
     } else {
         if (out_final_path) out_final_path->clear();
     }
+    return true;
+}
+
+bool SnapshotManager::WriteSnapuserdModeHint(const std::string& mode) {
+    auto path = GetSnapuserdModeHintFilePath();
+    if (!WriteStringToFileAtomic(mode, GetSnapuserdModeHintFilePath())) {
+        PLOG(ERROR) << "Could not write to state file";
+        return false;
+    }
+
     return true;
 }
 
@@ -1080,10 +1148,62 @@ bool SnapshotManager::UnmapCowImage(const std::string& name) {
     return images_->UnmapImageIfExists(GetCowImageDeviceName(name));
 }
 
+// Discards all blocks on the given logical COW device.
+static void DiscardCowDevice(const std::string& cow_device_name) {
+    DeviceMapper& dm = DeviceMapper::Instance();
+
+    if (dm.GetState(cow_device_name) == DmDeviceState::INVALID) {
+        // We may have cow mapped through FIEMAP, in that case cow device does not exist
+        // So this is not an error.
+        LOG(INFO) << "Cow device " << cow_device_name << " not found, skipping discard";
+        return;
+    }
+
+    std::string path;
+    if (!dm.GetDmDevicePathByName(cow_device_name, &path)) {
+        LOG(ERROR) << "Could not find device path for " << cow_device_name;
+        return;
+    }
+
+    android::base::unique_fd fd(open(path.c_str(), O_RDWR | O_CLOEXEC));
+    if (fd < 0) {
+        PLOG(ERROR) << "Failed to open " << path;
+        return;
+    }
+
+    uint64_t size = 0;
+    if (ioctl(fd.get(), BLKGETSIZE64, &size) < 0) {
+        PLOG(ERROR) << "Failed to get size of " << path;
+        return;
+    }
+
+    if (size == 0) {
+        LOG(INFO) << "Device " << path << " has size 0, nothing to discard.";
+        return;
+    }
+
+    uint64_t range[2] = {0, size};
+    auto start = std::chrono::steady_clock::now();
+    if (ioctl(fd.get(), BLKDISCARD, &range) < 0) {
+        PLOG(ERROR) << "Failed to discard " << path << " with size " << size;
+        return;
+    }
+    auto end = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+
+    LOG(INFO) << "Successfully discarded " << size << " bytes on " << cow_device_name << " at "
+              << path << " in " << duration.count() << "ms";
+}
+
 bool SnapshotManager::DeleteSnapshot(LockedFile* lock, const std::string& name) {
     CHECK(lock);
     CHECK(lock->lock_mode() == LOCK_EX);
     if (!EnsureImageManager()) return false;
+
+    if (UpdateUsesUserSnapshots(lock)) {
+        // Discard is best effort, so we do not check for errors
+        DiscardCowDevice(GetCowName(name));
+    }
 
     if (!UnmapCowDevices(lock, name)) {
         return false;
@@ -1508,8 +1628,8 @@ auto SnapshotManager::CheckMergeState(const std::function<bool()>& before_cancel
     return result;
 }
 
-auto SnapshotManager::CheckMergeState(LockedFile* lock,
-                                      const std::function<bool()>& before_cancel) -> MergeResult {
+auto SnapshotManager::CheckMergeState(LockedFile* lock, const std::function<bool()>& before_cancel)
+        -> MergeResult {
     SnapshotUpdateStatus update_status = ReadSnapshotUpdateStatus(lock);
     switch (update_status.state()) {
         case UpdateState::None:
@@ -1859,6 +1979,10 @@ std::string SnapshotManager::GetRollbackIndicatorPath() {
 
 std::string SnapshotManager::GetSnapuserdFromSystemPath() {
     return metadata_dir_ + "/" + android::base::Basename(kSnapuserdFromSystem);
+}
+
+std::string SnapshotManager::GetSnapuserdModeHintFilePath() {
+    return metadata_dir_ + "/" + android::base::Basename(kSnapuserdModeHintFile);
 }
 
 std::string SnapshotManager::GetForwardMergeIndicatorPath() {
@@ -2553,13 +2677,13 @@ bool SnapshotManager::IsSnapshotWithoutSlotSwitch() {
     return (access(GetBootSnapshotsWithoutSlotSwitchPath().c_str(), F_OK) == 0);
 }
 
-bool SnapshotManager::UpdateUsesCompression() {
+bool SnapshotManager::UpdateUsesSnapuserd() {
     auto lock = LockShared();
     if (!lock) return false;
-    return UpdateUsesCompression(lock.get());
+    return UpdateUsesSnapuserd(lock.get());
 }
 
-bool SnapshotManager::UpdateUsesCompression(LockedFile* lock) {
+bool SnapshotManager::UpdateUsesSnapuserd(LockedFile* lock) {
     // This returns true even if compression is "none", since update_engine is
     // really just trying to see if snapuserd is in use.
     SnapshotUpdateStatus update_status = ReadSnapshotUpdateStatus(lock);
@@ -3262,7 +3386,7 @@ bool SnapshotManager::UnmapCowDevices(LockedFile* lock, const std::string& name)
     CHECK(lock);
     if (!EnsureImageManager()) return false;
 
-    if (UpdateUsesCompression(lock) && !UpdateUsesUserSnapshots(lock)) {
+    if (UpdateUsesSnapuserd(lock) && !UpdateUsesUserSnapshots(lock)) {
         auto dm_user_name = GetSnapshotCowName(name, GetSnapshotDriver(lock));
         if (!UnmapDmUserDevice(dm_user_name)) {
             return false;
@@ -3372,7 +3496,7 @@ bool SnapshotManager::MapAllSnapshots(const std::chrono::milliseconds& timeout_m
     }
 
     std::vector<std::string> snapshots;
-    if (!ListSnapshots(lock.get(), &snapshots)) {
+    if (!ListSnapshots(lock.get(), &snapshots, GetSnapshotSlotSuffix())) {
         return false;
     }
 
@@ -3446,8 +3570,8 @@ bool SnapshotManager::UnmapAllSnapshots(LockedFile* lock) {
     return true;
 }
 
-auto SnapshotManager::OpenFile(const std::string& file,
-                               int lock_flags) -> std::unique_ptr<LockedFile> {
+auto SnapshotManager::OpenFile(const std::string& file, int lock_flags)
+        -> std::unique_ptr<LockedFile> {
     const auto start = std::chrono::system_clock::now();
     unique_fd fd(open(file.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW));
     if (fd < 0) {
@@ -3853,6 +3977,8 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
     std::string vabc_disable_reason;
     if (!dap_metadata.vabc_enabled()) {
         vabc_disable_reason = "not enabled metadata";
+    } else if (device_->IsRecovery()) {
+        vabc_disable_reason = "recovery";
     } else if (!KernelSupportsCompressedSnapshots()) {
         vabc_disable_reason = "kernel missing userspace block device support";
     }
@@ -3891,10 +4017,16 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
 
     const bool using_snapuserd = userspace_snapshots || legacy_compression;
     if (!using_snapuserd) {
-        LOG(ERROR) << "Using legacy Virtual A/B (dm-snapshot)";
-        return Return::Error();
+        LOG(INFO) << "Using legacy Virtual A/B (dm-snapshot)";
     }
-
+    auto disable_ublk_through_manifest = false;
+    // Disabling UBLK based snapshots can be requested explicitly through manifest.
+    // This will disable UBLK based snapshots even if device is configured to use UBLK
+    // based on RO property or minimum kernel version.
+    if (dap_metadata.disable_ublk()) {
+        LOG(INFO) << "Disabling UBLK backend for snapshots, requested through manifest.";
+        disable_ublk_through_manifest = true;
+    }
     std::string compression_algorithm;
     uint64_t compression_factor{};
     if (using_snapuserd) {
@@ -4010,7 +4142,12 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
                 android::base::GetUintProperty<uint32_t>("ro.virtual_ab.verify_block_size", 0));
         status.set_num_verification_threads(
                 android::base::GetUintProperty<uint32_t>("ro.virtual_ab.num_verify_threads", 0));
-        status.set_ublk_snapshots_enabled(IsUblkEnabled());
+        if (disable_ublk_through_manifest) {
+            status.set_ublk_snapshots_enabled(false);
+            WriteSnapuserdModeHint(kSnapuserdModeDmUser);
+        } else {
+            status.set_ublk_snapshots_enabled(IsUblkEnabled());
+        }
         is_snapshot_ublk_.emplace(status.ublk_snapshots_enabled());
         LOG(INFO) << "Using ublk snapshots: " << status.ublk_snapshots_enabled();
     } else if (legacy_compression) {
@@ -4157,6 +4294,11 @@ Return SnapshotManager::CreateUpdateSnapshotsInternal(
                                                                kCowGroupName, 0 /* flags */);
             if (cow_partition == nullptr) {
                 return Return::Error();
+            }
+
+            if (GetDebugFlag("no_snapshot_space")) {
+                LOG(ERROR) << "Forcing NO_SPACE error during snapshot creation for testing";
+                return Return::NoSpace(cow_creator_ret->snapshot_status.cow_partition_size());
             }
 
             if (!target_metadata->ResizePartition(

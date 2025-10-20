@@ -2008,6 +2008,26 @@ TEST_F(SnapshotUpdateTest, ReclaimCow) {
     }
 }
 
+TEST_F(SnapshotUpdateTest, DisableUblkViaManifest) {
+    if (!snapuserd_required_) {
+        // Don't need this in vab_legacy_tests
+        GTEST_SKIP() << "Skipping snapuserd test";
+    }
+    ASSERT_TRUE(sm->BeginUpdate());
+    manifest_.mutable_dynamic_partition_metadata()->set_disable_ublk(true);
+    ASSERT_TRUE(sm->CreateUpdateSnapshots(manifest_));
+
+    {
+        ASSERT_TRUE(AcquireLock());
+        auto local_lock = std::move(lock_);
+        auto status = sm->ReadSnapshotUpdateStatus(local_lock.get());
+        // verify SnapshotUpdateStatus has ublk disabled
+        ASSERT_FALSE(status.ublk_snapshots_enabled());
+        // verify SnapshotManager also sees ublk disabled
+        ASSERT_FALSE(sm->UpdateUsesUblk());
+    }
+}
+
 TEST_F(SnapshotUpdateTest, RetrofitAfterRegularAb) {
     constexpr auto kRetrofitGroupSize = kGroupSize / 2;
 
@@ -3031,6 +3051,15 @@ TEST_F(SnapshotUpdateTest, MergeRespectsSourceUblkDisabled) {
     // Restore original properties
     ASSERT_TRUE(android::base::SetProperty("snapuserd.test.ublk.force_mode", previous_ublk_mode));
     ASSERT_TRUE(android::base::SetProperty("snapuserd.test.force_dm_user", previous_dm_user_mode));
+}
+
+TEST_F(SnapshotUpdateTest, NoSpaceSimulation) {
+    fetcher_->SetProperty("persist.virtual_ab.testing.no_snapshot_space", "true");
+    ASSERT_TRUE(sm->BeginUpdate());
+
+    auto ret = sm->CreateUpdateSnapshots(manifest_);
+    ASSERT_FALSE(ret.is_ok());
+    ASSERT_EQ(ret.error_code(), Return::ErrorCode::NO_SPACE);
 }
 
 class FlashAfterUpdateTest : public SnapshotUpdateTest,

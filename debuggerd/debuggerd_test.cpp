@@ -322,19 +322,6 @@ static void ConsumeFd(unique_fd fd, std::string* output) {
   ASSERT_TRUE(android::base::ReadFdToString(fd, output));
 }
 
-class LogcatCollector {
- public:
-  LogcatCollector() { system("logcat -c"); }
-
-  void Collect(std::string* output) {
-    FILE* cmd_stdout = popen("logcat -d '*:S DEBUG'", "r");
-    ASSERT_NE(cmd_stdout, nullptr);
-    unique_fd tmp_fd(TEMP_FAILURE_RETRY(dup(fileno(cmd_stdout))));
-    ConsumeFd(std::move(tmp_fd), output);
-    pclose(cmd_stdout);
-  }
-};
-
 TEST_F(CrasherTest, smoke) {
   StartProcess([]() {
     *reinterpret_cast<volatile char*>(0xdead) = '1';
@@ -389,7 +376,8 @@ TEST_F(CrasherTest, fault_address_read) {
                   "https://github.com/google/android-riscv64/issues/118 is fixed.";
 #endif
 
-  StartProcess([]() { volatile char value = *reinterpret_cast<volatile char*>(0xdead); });
+  StartProcess(
+      []() { [[maybe_unused]] volatile char value = *reinterpret_cast<volatile char*>(0xdead); });
 
   unique_fd output_fd;
   StartIntercept(&output_fd);
@@ -523,20 +511,15 @@ TEST_P(SizeParamCrasherTest, mte_uaf) {
   AssertDeath(SIGSEGV);
   ASSERT_NO_FATAL_FAILURE(FinishIntercept());
 
-  std::vector<std::string> log_sources(2);
-  ConsumeFd(std::move(output_fd), &log_sources[0]);
-  LogcatCollector logcat_collector;
-  logcat_collector.Collect(&log_sources[1]);
-  // Tag dump only available in the tombstone, not logcat.
-  ASSERT_MATCH(log_sources[0], "Memory tags around the fault address");
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
 
-  for (const auto& result : log_sources) {
-    ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\))");
-    ASSERT_MATCH(result, R"(Cause: \[MTE\]: Use After Free, 0 bytes into a )" +
-                             std::to_string(GetParam()) + R"(-byte allocation)");
-    ASSERT_MATCH(result, R"(deallocated by thread .*?\n.*#00 pc)");
-    ASSERT_MATCH(result, R"((^|\s)allocated by thread .*?\n.*#00 pc)");
-  }
+  ASSERT_MATCH(result, "Memory tags around the fault address");
+  ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\))");
+  ASSERT_MATCH(result, R"(Cause: \[MTE\]: Use After Free, 0 bytes into a )" +
+                           std::to_string(GetParam()) + R"(-byte allocation)");
+  ASSERT_MATCH(result, R"(deallocated by thread .*?\n.*#00 pc)");
+  ASSERT_MATCH(result, R"((^|\s)allocated by thread .*?\n.*#00 pc)");
 }
 
 TEST_P(SizeParamCrasherTest, mte_oob_uaf) {
@@ -589,23 +572,19 @@ TEST_P(SizeParamCrasherTest, mte_overflow) {
   AssertDeath(SIGSEGV);
   ASSERT_NO_FATAL_FAILURE(FinishIntercept());
 
-  std::vector<std::string> log_sources(2);
-  ConsumeFd(std::move(output_fd), &log_sources[0]);
-  LogcatCollector logcat_collector;
-  logcat_collector.Collect(&log_sources[1]);
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
 
-  // Tag dump only in tombstone, not logcat, and tagging is not used for
-  // overflow protection in the scudo secondary (guard pages are used instead).
+  // Tagging is not used for overflow protection in the scudo secondary (guard pages are used
+  // instead).
   if (GetParam() < 0x10000) {
-    ASSERT_MATCH(log_sources[0], "Memory tags around the fault address");
+    ASSERT_MATCH(result, "Memory tags around the fault address");
   }
 
-  for (const auto& result : log_sources) {
-    ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\))");
-    ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Overflow, 0 bytes right of a )" +
-                             std::to_string(GetParam()) + R"(-byte allocation)");
-    ASSERT_MATCH(result, R"((^|\s)allocated by thread .*?\n.*#00 pc)");
-  }
+  ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\))");
+  ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Overflow, 0 bytes right of a )" +
+                           std::to_string(GetParam()) + R"(-byte allocation)");
+  ASSERT_MATCH(result, R"((^|\s)allocated by thread .*?\n.*#00 pc)");
 }
 
 TEST_P(SizeParamCrasherTest, mte_underflow) {
@@ -750,27 +729,20 @@ TEST_F(CrasherTest, mte_multiple_causes) {
   AssertDeath(SIGSEGV);
   ASSERT_NO_FATAL_FAILURE(FinishIntercept());
 
-  std::vector<std::string> log_sources(2);
-  ConsumeFd(std::move(output_fd), &log_sources[0]);
-  LogcatCollector logcat_collector;
-  logcat_collector.Collect(&log_sources[1]);
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
 
-  // Tag dump only in the tombstone, not logcat.
-  ASSERT_MATCH(log_sources[0], "Memory tags around the fault address");
-
-  for (const auto& result : log_sources) {
-    ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\))");
-    ASSERT_THAT(result, HasSubstr("Note: multiple potential causes for this crash were detected, "
-                                  "listing them in decreasing order of likelihood."));
-    // Adjacent untracked allocations may cause us to see the wrong underflow here (or only
-    // overflows), so we can't match explicitly for an underflow message.
-    ASSERT_MATCH(result,
-                 R"(Cause: \[MTE\]: Buffer Overflow, 0 bytes right of a 16-byte allocation)");
-    // Ensure there's at least two allocation traces (one for each cause).
-    ASSERT_MATCH(
-        result,
-        R"((^|\s)allocated by thread .*?\n.*#00 pc(.|\n)*?(^|\s)allocated by thread .*?\n.*#00 pc)");
-  }
+  ASSERT_MATCH(result, "Memory tags around the fault address");
+  ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\))");
+  ASSERT_THAT(result, HasSubstr("Note: multiple potential causes for this crash were detected, "
+                                "listing them in decreasing order of likelihood."));
+  // Adjacent untracked allocations may cause us to see the wrong underflow here (or only
+  // overflows), so we can't match explicitly for an underflow message.
+  ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Overflow, 0 bytes right of a 16-byte allocation)");
+  // Ensure there's at least two allocation traces (one for each cause).
+  ASSERT_MATCH(
+      result,
+      R"((^|\s)allocated by thread .*?\n.*#00 pc(.|\n)*?(^|\s)allocated by thread .*?\n.*#00 pc)");
 }
 
 #if defined(__aarch64__)
@@ -1941,7 +1913,6 @@ TEST_P(GwpAsanCrasherTest, run_gwp_asan_test) {
 
   GwpAsanTestParameters params = std::get<0>(GetParam());
   bool recoverable = std::get<1>(GetParam());
-  LogcatCollector logcat_collector;
 
   StartProcess([&recoverable]() {
     const char* env[] = {"GWP_ASAN_SAMPLE_RATE=1", "GWP_ASAN_PROCESS_SAMPLING=1",
@@ -1976,23 +1947,20 @@ TEST_P(GwpAsanCrasherTest, run_gwp_asan_test) {
   }
   ASSERT_NO_FATAL_FAILURE(FinishIntercept());
 
-  std::vector<std::string> log_sources(2);
-  ConsumeFd(std::move(output_fd), &log_sources[0]);
-  logcat_collector.Collect(&log_sources[1]);
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
 
   // seccomp forces the fallback handler, which doesn't print GWP-ASan debugging
   // information. Make sure the recovery still works, but the report won't be
   // hugely useful, it looks like a regular SEGV.
   bool seccomp = std::get<2>(GetParam());
   if (!seccomp) {
-    for (const auto& result : log_sources) {
-      ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\), code 2 \(SEGV_ACCERR\))");
-      ASSERT_MATCH(result, R"(Cause: \[GWP-ASan\]: )" + params.cause_needle);
-      if (params.free_before_access) {
-        ASSERT_MATCH(result, R"(deallocated by thread .*\n.*#00 pc)");
-      }
-      ASSERT_MATCH(result, R"((^|\s)allocated by thread .*\n.*#00 pc)");
+    ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\), code 2 \(SEGV_ACCERR\))");
+    ASSERT_MATCH(result, R"(Cause: \[GWP-ASan\]: )" + params.cause_needle);
+    if (params.free_before_access) {
+      ASSERT_MATCH(result, R"(deallocated by thread .*\n.*#00 pc)");
     }
+    ASSERT_MATCH(result, R"((^|\s)allocated by thread .*\n.*#00 pc)");
   }
 }
 
@@ -3359,14 +3327,18 @@ TEST_F(CrasherTest, executable) {
   SKIP_WITH_HWASAN << "prctl(PR_SET_MM, PR_SET_MM_ARG_{START,END} not supported on hwasan.";
 
   StartProcess([]() {
-    const char command_line[] = "TestCommand";
+    constexpr char kTestCommand[] = "TestCommand";
+    constexpr size_t kTestCommandSize = std::char_traits<char>::length(kTestCommand) + 1;
+    char* cmdline_buffer = reinterpret_cast<char*>(
+        mmap(nullptr, kTestCommandSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0));
+    EXPECT_NE(MAP_FAILED, cmdline_buffer);
+    memcpy(cmdline_buffer, kTestCommand, kTestCommandSize);
 
     EXPECT_EQ(0, prctl(PR_SET_MM, PR_SET_MM_ARG_START,
-                       reinterpret_cast<unsigned long>(command_line), 0, 0))
+                       reinterpret_cast<unsigned long>(cmdline_buffer), 0, 0))
         << strerror(errno);
-    EXPECT_EQ(0,
-              prctl(PR_SET_MM, PR_SET_MM_ARG_END,
-                    reinterpret_cast<unsigned long>(&command_line[sizeof(command_line) - 1]), 0, 0))
+    EXPECT_EQ(0, prctl(PR_SET_MM, PR_SET_MM_ARG_END,
+                       reinterpret_cast<unsigned long>(&cmdline_buffer[kTestCommandSize]), 0, 0))
         << strerror(errno);
     abort();
   });
@@ -3381,4 +3353,156 @@ TEST_F(CrasherTest, executable) {
   ConsumeFd(std::move(output_fd), &result);
   ASSERT_MATCH(result, R"(Executable: \S*debuggerd_test\S*\n)");
   ASSERT_MATCH(result, R"(Cmdline: TestCommand\n)");
+}
+
+TEST_F(CrasherTest, buffer_overflow_detection_write) {
+#if !defined(__LP64__)
+  // The 32 bit scudo doesn't have guard pages enabled right now.
+  GTEST_SKIP() << "Only supported on 64 bit";
+#endif
+
+  SKIP_WITH_HWASAN << "hwasan detects this case differently";
+
+  SKIP_WITHOUT_SCUDO << "Only Scudo can detect these errors";
+
+  StartProcess([]() {
+    // Allocate large enough that should result in a mmap allocation.
+    size_t alloc_size = __builtin_align_up(1'000'000, getpagesize());
+    uint8_t* pointer = reinterpret_cast<uint8_t*>(malloc(alloc_size));
+    ASSERT_TRUE(pointer != nullptr);
+    // Write past the end of the allocation
+    for (size_t i = alloc_size; i < alloc_size + 1; i++) {
+      pointer[i] = 1;
+      EXPECT_EQ(1, pointer[i]);
+    }
+    abort();
+  });
+
+  unique_fd output_fd;
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGSEGV);
+  ASSERT_NO_FATAL_FAILURE(FinishIntercept());
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+  if (mte_supported() && mte_enabled()) {
+    ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Overflow)");
+  } else {
+    ASSERT_MATCH(result, R"(Cause: possible buffer overflow)");
+  }
+}
+
+TEST_F(CrasherTest, buffer_underflow_detection_write) {
+#if !defined(__LP64__)
+  // The 32 bit scudo doesn't have guard pages enabled right now.
+  GTEST_SKIP() << "Only supported on 64 bit";
+#endif
+
+  SKIP_WITH_HWASAN << "hwasan detects this case differently";
+
+  SKIP_WITHOUT_SCUDO << "Only Scudo can detect these errors";
+
+  StartProcess([]() {
+    // Allocate large enough that should result in a mmap allocation.
+    size_t alloc_size = __builtin_align_up(1'000'000, getpagesize());
+    uint8_t* pointer = reinterpret_cast<uint8_t*>(malloc(alloc_size));
+    ASSERT_TRUE(pointer != nullptr);
+    // Write before the end of the allocation
+    for (size_t i = 0; i < 10'000; i++) {
+      pointer[-i] = 1;
+      EXPECT_EQ(1, pointer[-i]);
+    }
+    abort();
+  });
+
+  unique_fd output_fd;
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGSEGV);
+  ASSERT_NO_FATAL_FAILURE(FinishIntercept());
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+  if (mte_supported() && mte_enabled()) {
+    ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Underflow)");
+  } else {
+    ASSERT_MATCH(result, R"(Cause: possible buffer underflow)");
+  }
+}
+
+TEST_F(CrasherTest, buffer_overflow_detection_read) {
+#if !defined(__LP64__)
+  // The 32 bit scudo doesn't have guard pages enabled right now.
+  GTEST_SKIP() << "Only supported on 64 bit";
+#endif
+
+  SKIP_WITH_HWASAN << "hwasan detects this case differently";
+
+  SKIP_WITHOUT_SCUDO << "Only Scudo can detect these errors";
+
+  StartProcess([]() {
+    // Allocate large enough that should result in a mmap allocation.
+    size_t alloc_size = __builtin_align_up(1'000'000, getpagesize());
+    uint8_t* pointer = reinterpret_cast<uint8_t*>(malloc(alloc_size));
+    ASSERT_TRUE(pointer != nullptr);
+    // Write past the end of the allocation
+    for (size_t i = alloc_size; i < alloc_size + 10'000; i++) {
+      uint8_t value;
+      android::base::DoNotOptimize(value = pointer[i]);
+    }
+    abort();
+  });
+
+  unique_fd output_fd;
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGSEGV);
+  ASSERT_NO_FATAL_FAILURE(FinishIntercept());
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+  if (mte_supported() && mte_enabled()) {
+    ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Overflow)");
+  } else {
+    ASSERT_MATCH(result, R"(Cause: possible buffer overflow)");
+  }
+}
+
+TEST_F(CrasherTest, buffer_underflow_detection_read) {
+#if !defined(__LP64__)
+  // The 32 bit scudo doesn't have guard pages enabled right now.
+  GTEST_SKIP() << "Only supported on 64 bit";
+#endif
+
+  SKIP_WITH_HWASAN << "hwasan detects this case differently";
+
+  SKIP_WITHOUT_SCUDO << "Only Scudo can detect these errors";
+
+  StartProcess([]() {
+    // Allocate large enough that should result in a mmap allocation.
+    size_t alloc_size = __builtin_align_up(1'000'000, getpagesize());
+    uint8_t* pointer = reinterpret_cast<uint8_t*>(malloc(alloc_size));
+    ASSERT_TRUE(pointer != nullptr);
+    // Write before the end of the allocation
+    for (size_t i = 0; i < 10'000; i++) {
+      uint8_t value;
+      android::base::DoNotOptimize(value = pointer[-i]);
+    }
+    abort();
+  });
+
+  unique_fd output_fd;
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGSEGV);
+  ASSERT_NO_FATAL_FAILURE(FinishIntercept());
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+  if (mte_supported() && mte_enabled()) {
+    ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Underflow)");
+  } else {
+    ASSERT_MATCH(result, R"(Cause: possible buffer underflow)");
+  }
 }

@@ -124,7 +124,10 @@ cc_library_static {
 // Implementation with a no-op fallback.
 cc_library_static {
     name: "libdebuggerd_handler",
-    defaults: ["debuggerd_defaults"],
+    defaults: [
+        "debuggerd_defaults",
+        "rust_static_std",
+    ],
     srcs: ["handler/debuggerd_fallback_nop.cpp"],
 
     header_libs: ["bionic_libc_platform_headers"],
@@ -158,7 +161,7 @@ cc_library_static {
         "libasync_safe",
         "libbase",
         "libdebuggerd",
-        "libunwindstack_no_dex",
+        "libunwindstack_no_dex_no_std",
         "liblzma",
         "libcutils",
     ],
@@ -171,7 +174,10 @@ cc_library_static {
 
 cc_library {
     name: "libdebuggerd_client",
-    defaults: ["debuggerd_defaults"],
+    defaults: [
+        "debuggerd_defaults",
+        "rust_static_std",
+    ],
     srcs: [
         "client/debuggerd_client.cpp",
         "util.cpp",
@@ -266,8 +272,7 @@ cc_library_static {
     ],
 
     static_libs: [
-        "libdexfile_support", // libunwindstack dependency
-        "libunwindstack",
+        "libunwindstack_no_dex_no_std",
         "liblzma",
         "libbase",
         "libcutils",
@@ -355,7 +360,10 @@ cc_test_library {
 
 cc_test {
     name: "debuggerd_test",
-    defaults: ["debuggerd_defaults"],
+    defaults: [
+        "debuggerd_defaults",
+        "rust_static_std",
+    ],
     require_root: true,
 
     cflags: ["-Wno-missing-field-initializers"],
@@ -443,7 +451,10 @@ cc_binary {
         "tombstone_handler.cpp",
         "util.cpp",
     ],
-    defaults: ["debuggerd_defaults"],
+    defaults: [
+        "debuggerd_defaults",
+        "rust_static_std",
+    ],
 
     compile_multilib: "both",
     multilib: {

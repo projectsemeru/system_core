@@ -177,6 +177,7 @@ libinit_cc_defaults {
     },
     static_libs: [
         "libapexd_flags",
+        "libinit_flags",
         "libavb",
         "libavf_cc_flags",
         "libbootloader_message",
@@ -243,6 +244,7 @@ cc_defaults {
         export_proto_headers: true,
     },
     static_libs: [
+        "libinit_flags",
         "libueventd_flags",
     ],
 
@@ -276,6 +278,10 @@ cc_library_static {
     ],
     recovery_available: false,
     cflags: ["-DMICRODROID=1"],
+    cppflags: [
+        "-UWORLD_WRITABLE_KMSG",
+        "-DWORLD_WRITABLE_KMSG=1",
+    ],
 }
 
 phony {
@@ -343,6 +349,10 @@ cc_binary {
     ],
     static_libs: ["libinit.microdroid"],
     cflags: ["-DMICRODROID=1"],
+    cppflags: [
+        "-UWORLD_WRITABLE_KMSG",
+        "-DWORLD_WRITABLE_KMSG=1",
+    ],
     no_full_install: true,
     visibility: ["//packages/modules/Virtualization/build/microdroid"],
 }
@@ -390,7 +400,6 @@ init_first_stage_cc_defaults {
         "libfs_mgr",
         "libfec",
         "libfec_rs",
-        "libsquashfs_utils",
         "libcrypto_utils",
         "libavb",
         "liblp",
@@ -494,7 +503,11 @@ cc_binary {
         "avf_build_flags_cc",
         "init_first_stage_defaults",
     ],
-    cflags: ["-DMICRODROID=1"],
+    cflags: [
+        "-DMICRODROID=1",
+        "-UWORLD_WRITABLE_KMSG",
+        "-DWORLD_WRITABLE_KMSG=1",
+    ],
     no_full_install: true,
 }
 
@@ -569,6 +582,7 @@ cc_defaults {
     static_libs: [
         "libfs_mgr",
         "libhidl-gen-utils",
+        "libinit_flags",
     ],
 }
 
@@ -621,6 +635,7 @@ cc_defaults {
     ],
     static_libs: [
         "libfstab",
+        "libinit_flags",
         "libpropertyinfoserializer",
         "libpropertyinfoparser",
     ],
@@ -724,4 +739,17 @@ aconfig_declarations {
 cc_aconfig_library {
     name: "libueventd_flags",
     aconfig_declarations: "ueventd_flags",
+}
+
+aconfig_declarations {
+    name: "init_flags",
+    package: "com.android.init.flags",
+    srcs: ["init.aconfig"],
+    container: "system",
+}
+
+cc_aconfig_library {
+    name: "libinit_flags",
+    aconfig_declarations: "init_flags",
+    host_supported: true,
 }

@@ -21,9 +21,19 @@
       "File": "top-app/cpus"
     },
     {
+      "Name": "MemEvents",
+      "Controller": "memory",
+      "File": "memory.events"
+    },
+    {
       "Name": "MemStats",
       "Controller": "memory",
       "File": "memory.stat"
+    },
+    {
+      "Name": "MemHigh",
+      "Controller": "memory",
+      "File": "memory.high"
     },
     {
       "Name": "MemLimit",
@@ -41,6 +51,11 @@
       "Name": "MemSwappiness",
       "Controller": "memory",
       "File": "memory.swappiness"
+    },
+    {
+      "Name": "SwapMax",
+      "Controller": "memory",
+      "File": "memory.swap.max"
     },
     {
       "Name": "MemUsage",

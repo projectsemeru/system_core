@@ -30,7 +30,6 @@
 
 #include <thread>
 
-#include <android-base/chrono_utils.h>
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/properties.h>
@@ -40,6 +39,7 @@
 
 #include "exthandler/exthandler.h"
 
+using android::base::GetProperty;
 using android::base::ReadFdToString;
 using android::base::Socketpair;
 using android::base::Split;
@@ -86,7 +86,7 @@ static bool IsBooting() {
     return access("/dev/.booting", F_OK) == 0;
 }
 
-static bool IsApexActivated() {
+static bool WaitForApexActivated() {
     static bool apex_activated = []() {
         // Wait for com.android.runtime.apex activation
         // Property name and value must be kept in sync with system/apexd/apex/apex_constants.h
@@ -107,7 +107,7 @@ static bool NeedsRerunExternalHandler() {
     // Rerun external handler only on the first try and when apex is activated
     if (first) {
         first = false;
-        return IsApexActivated();
+        return WaitForApexActivated();
     }
 
     return first;
@@ -184,8 +184,8 @@ std::string FirmwareHandler::GetFirmwarePath(const Uevent& uevent) const {
     return uevent.firmware;
 }
 
-void FirmwareHandler::ProcessFirmwareEvent(const std::string& path,
-                                           const std::string& firmware) const {
+void FirmwareHandler::ProcessFirmwareEvent(const std::string& path, const std::string& firmware,
+                                           bool in_thread_pool, Timer t) const {
     std::string root = "/sys" + path;
     std::string loading = root + "/loading";
     std::string data = root + "/data";
@@ -222,19 +222,30 @@ void FirmwareHandler::ProcessFirmwareEvent(const std::string& path,
         return true;
     };
 
-    int booting = IsBooting();
-try_loading_again:
-    attempted_paths_and_errors.clear();
-    if (ForEachFirmwareDirectory(TryLoadFirmware)) {
-        return;
-    }
+    while (true) {
+        if (ForEachFirmwareDirectory(TryLoadFirmware)) {
+            LOG(INFO) << "loading " << path << " took " << t;
+            return;
+        }
 
-    if (booting) {
         // If we're not fully booted, we may be missing
         // filesystems needed for firmware, wait and retry.
+        if (!IsBooting()) {
+            break;
+        }
+
         std::this_thread::sleep_for(100ms);
-        booting = IsBooting();
-        goto try_loading_again;
+        if (in_thread_pool) {
+            // If this is executed in a thread pool, retry in a detached thread to avoid deadlock;
+            // coldboot waits for the thread pool to be empty and this firmware handling may
+            // continue until /dev/.booting is removed, which happens at late-init, causing a
+            // possible deadlock (cf. b/441001521)
+            std::thread([path, firmware, t, this] {
+                ProcessFirmwareEvent(path, firmware, /*in_thread_pool=*/false, t);
+            }).detach();
+            return;
+        }
+        attempted_paths_and_errors.clear();
     }
 
     LOG(ERROR) << "firmware: could not find firmware for " << firmware;
@@ -246,6 +257,14 @@ try_loading_again:
     write(loading_fd.get(), "-1", 2);
 }
 
+static bool ShouldLookInBootstrapApexes() {
+    auto status = GetProperty("apexd.status", "");
+    if (status == "activated" || status == "ready") {
+        return false;
+    }
+    return true;
+}
+
 bool FirmwareHandler::ForEachFirmwareDirectory(
         std::function<bool(const std::string&)> handler) const {
     for (const std::string& firmware_directory : firmware_directories_) {
@@ -254,8 +273,15 @@ bool FirmwareHandler::ForEachFirmwareDirectory(
         }
     }
 
+    std::string pattern = "/apex/*/etc/firmware/";
+    // Let's look in bootstrap APEXes when APEXes are not ready in the default
+    // mount namespace.
+    if (ShouldLookInBootstrapApexes()) {
+        pattern = "/bootstrap-apex/*/etc/firmware/";
+    }
+
     glob_t glob_result;
-    glob("/apex/*/etc/firmware/", GLOB_MARK, nullptr, &glob_result);
+    glob(pattern.c_str(), GLOB_MARK, nullptr, &glob_result);
     auto free_glob = android::base::make_scope_guard(std::bind(&globfree, &glob_result));
     for (size_t i = 0; i < glob_result.gl_pathc; i++) {
         char* apex_firmware_directory = glob_result.gl_pathv[i];
@@ -273,11 +299,10 @@ bool FirmwareHandler::ForEachFirmwareDirectory(
     return false;
 }
 
-void FirmwareHandler::HandleUeventInternal(const Uevent& uevent) const {
+void FirmwareHandler::HandleUeventInternal(const Uevent& uevent, bool in_thread_pool) const {
     Timer t;
     auto firmware = GetFirmwarePath(uevent);
-    ProcessFirmwareEvent(uevent.path, firmware);
-    LOG(INFO) << "loading " << uevent.path << " took " << t;
+    ProcessFirmwareEvent(uevent.path, firmware, in_thread_pool, t);
 }
 
 void FirmwareHandler::HandleUevent(const Uevent& uevent) {
@@ -290,20 +315,21 @@ void FirmwareHandler::HandleUevent(const Uevent& uevent) {
             PLOG(ERROR) << "could not fork to process firmware event for " << uevent.firmware;
         } else if (pid == 0) {
             // Child does the actual work
-            HandleUeventInternal(uevent);
+            HandleUeventInternal(uevent, /*in_thread_pool=*/false);
             _exit(EXIT_SUCCESS);
         } else {
             // The main process returns here. Let the child do the actual work in parallel.
             return;
         }
     }
-    HandleUeventInternal(uevent);
+    HandleUeventInternal(uevent, /*in_thread_pool=*/false);
 }
 
 void FirmwareHandler::EnqueueUevent(const Uevent& uevent, ThreadPool& thread_pool) {
     if (uevent.subsystem != "firmware" || uevent.action != "add") return;
 
-    thread_pool.Enqueue(kPriorityFirmware, [&uevent, this] { HandleUeventInternal(uevent); });
+    thread_pool.Enqueue(kPriorityFirmware,
+                        [&uevent, this] { HandleUeventInternal(uevent, /*in_thread_pool=*/true); });
 }
 
 }  // namespace init

@@ -412,7 +412,9 @@ bool FirstStageMountVBootV2::CreateSnapshotPartitions(SnapshotManager* sm) {
 
     use_snapuserd_ = sm->IsSnapuserdRequired();
     if (use_snapuserd_) {
-        LaunchFirstStageSnapuserd(sm->UpdateUsesUblk());
+        bool use_ublk = sm->UpdateUsesUblk();
+        LOG(INFO) << "using snapuserd in " << (use_ublk ? "UBLK" : "dm-user") << " mode";
+        LaunchFirstStageSnapuserd(use_ublk);
     }
 
     sm->SetUeventRegenCallback([this](const std::string& device) -> bool {

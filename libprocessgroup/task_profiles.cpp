@@ -36,8 +36,6 @@
 #include <android-base/strings.h>
 #include <android-base/threads.h>
 
-#include <build_flags.h>
-
 #include <cutils/android_filesystem_config.h>
 
 #include <json/reader.h>
@@ -142,7 +140,7 @@ static bool isSystemApp(uid_t uid) {
 }
 
 std::string ConvertUidToPath(const char* root_cgroup_path, uid_t uid, bool v2_path) {
-    if (android::libprocessgroup_flags::cgroup_v2_sys_app_isolation() && v2_path) {
+    if (v2_path) {
         if (isSystemApp(uid))
             return StringPrintf("%s/system/uid_%u", root_cgroup_path, uid);
         else

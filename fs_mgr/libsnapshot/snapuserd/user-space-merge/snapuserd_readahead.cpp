@@ -149,6 +149,7 @@ class [[nodiscard]] AutoNotifyReadAheadFailed {
 };
 
 bool ReadAhead::ReconstructDataFromCow() {
+    std::unique_lock<std::mutex> lock(snapuserd_->GetBufferLock());
     std::unordered_map<uint64_t, void*>& read_ahead_buffer_map = snapuserd_->GetReadAheadMap();
     loff_t metadata_offset = 0;
     loff_t start_data_offset = snapuserd_->GetBufferDataOffset();
@@ -203,6 +204,8 @@ bool ReadAhead::ReconstructDataFromCow() {
 
         break;
     }
+
+    lock.unlock();
 
     snapuserd_->SetMergedBlockCountForNextCommit(total_blocks_merged);
 
@@ -435,7 +438,11 @@ bool ReadAhead::ReapIoCompletions(int pending_ios_to_complete) {
         // by re-populating the SQE entries and submitting the I/O
         // request back. However, we don't do that now; instead we
         // will fallback to synchronous I/O.
-        int ret = io_uring_wait_cqe(ring_.get(), &cqe);
+        int ret;
+        do {
+            ret = io_uring_wait_cqe(ring_.get(), &cqe);
+        } while (ret == -EINTR || ret == -EAGAIN);
+
         if (ret) {
             SNAP_LOG(ERROR) << "Read-ahead - io_uring_wait_cqe failed: " << strerror(-ret);
             status = false;
@@ -795,7 +802,7 @@ bool ReadAhead::RunThread() {
 
     InitializeIouring();
 
-    if (!SetThreadPriority(ANDROID_PRIORITY_BACKGROUND)) {
+    if (!SetThreadPriority(ANDROID_PRIORITY_NORMAL)) {
         SNAP_PLOG(ERROR) << "Failed to set thread priority";
     }
 

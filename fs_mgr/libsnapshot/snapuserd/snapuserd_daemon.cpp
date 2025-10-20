@@ -154,15 +154,38 @@ bool Daemon::StartServerForUserspaceSnapshots(int arg_start, int argc, char** ar
     }
 
     if (ublk_flag_is_default) {
+        LOG(INFO) << "No explicit mode flag provided, checking for hint file...";
+        std::string mode_from_hint;
+        if (android::base::ReadFileToString(kSnapuserdModeHintFile, &mode_from_hint)) {
+            mode_from_hint = android::base::Trim(mode_from_hint);
+            if (mode_from_hint == kSnapuserdModeUblk) {
+                LOG(INFO) << "Using ublk mode based on hint file.";
+                FLAGS_ublk = true;
+                ublk_flag_is_default = false;  // Hint file has priority
+            } else if (mode_from_hint == kSnapuserdModeDmUser) {
+                LOG(INFO) << "Using dm-user mode based on hint file.";
+                FLAGS_ublk = false;
+                ublk_flag_is_default = false;  // Hint file has priority
+            }
+        }
+    } else {
+        LOG(INFO) << "Mode explicitly set via command-line flag: "
+                  << (FLAGS_ublk ? "ublk" : "dm-user");
+    }
+
+    if (ublk_flag_is_default) {
+        LOG(INFO) << "No hint file found or hint was invalid, proceeding with auto-detection.";
         // If -ublk or -noublk was not explicitly passed on the command-line,
         // fall back to auto-detection. Otherwise, the flag passed by the
         // caller (libsnapshot) is respected.
         // Check if test wants to force dm_user mode.
         if (android::base::GetProperty("snapuserd.test.force_dm_user", "") == "true") {
+            LOG(INFO) << "Forcing dm-user mode via test property.";
             FLAGS_ublk = false;
         } else {
             // Otherwise, perform normal auto-detection.
             FLAGS_ublk = IsUblkEnabled();
+            LOG(INFO) << "Auto-detection selected mode: " << (FLAGS_ublk ? "ublk" : "dm-user");
         }
     }
     // Set block_server_opener_

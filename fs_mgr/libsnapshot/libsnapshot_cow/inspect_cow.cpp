@@ -27,6 +27,7 @@
 #include <android-base/unique_fd.h>
 #include <gflags/gflags.h>
 #include <libsnapshot/cow_reader.h>
+#include "libsnapshot/cow_format.h"
 #include "parser_v2.h"
 
 DEFINE_bool(silent, false, "Run silently");
@@ -123,7 +124,7 @@ static bool Inspect(const std::string& path) {
         }
     }
 
-    CowReader reader;
+    CowReader reader(CowReader::ReaderFlags::USERSPACE_MERGE, true);
 
     auto start_time = std::chrono::steady_clock::now();
     if (!reader.Parse(fd)) {
@@ -194,10 +195,55 @@ static bool Inspect(const std::string& path) {
 
     bool success = true;
     uint64_t xor_ops = 0, copy_ops = 0, replace_ops = 0, zero_ops = 0;
+
+    // A merge group is a set of COW operations that are processed together.
+    // This variable holds the maximum number of operations that can be in a
+    // single merge group.
+    uint32_t max_ops_per_merge_group = 0;
+    if (header.block_size > 0) {
+        max_ops_per_merge_group = (header.buffer_size - 2 * header.block_size) / header.block_size;
+    }
+    if (max_ops_per_merge_group == 0) {
+        max_ops_per_merge_group = header.num_merge_ops;
+    }
+    uint32_t merge_group_number = 0;
+    // Track the number of operations in the current merge group.
+    uint32_t current_ops_in_merge_group = 0;
+    // OTA COW files are usually divided into two sections: ordered operations
+    // followed by unordered operations (like zero and replace). Merge groups are
+    // only relevant for the initial ordered operations because they depend on
+    // data from the source device. The scratch space is used during the merge
+    // of these ordered ops to ensure crash/resume safety. For unordered ops,
+    // the concept of a merge group is not important.
+    bool in_ordered_section = true;
+
     while (!iter->AtEnd()) {
         const CowOperation* op = iter->Get();
+        bool is_ordered = IsOrderedOp(*op);
 
-        if (!FLAGS_silent && FLAGS_show_ops) std::cout << *op << "\n";
+        if (in_ordered_section && !is_ordered) {
+            in_ordered_section = false;
+            // Reset the op counter for the unordered section.
+            current_ops_in_merge_group = 0;
+        }
+
+        if (in_ordered_section) {
+            if (current_ops_in_merge_group >= max_ops_per_merge_group) {
+                merge_group_number++;
+                current_ops_in_merge_group = 0;
+            }
+            if (!FLAGS_silent && FLAGS_show_ops) {
+                std::cout << "[MergeGrp: " << merge_group_number
+                          << ", OpNum: " << current_ops_in_merge_group << "] " << *op << "\n";
+            }
+        } else {
+            if (!FLAGS_silent && FLAGS_show_ops) {
+                std::cout << "[MergeGrp: n/a, OpNum: " << current_ops_in_merge_group << "] " << *op
+                          << "\n";
+            }
+        }
+
+        current_ops_in_merge_group++;
 
         if ((FLAGS_decompress || extract_to >= 0) && op->type() == kCowReplaceOp) {
             if (reader.ReadData(op, buffer.data(), buffer.size()) < 0) {

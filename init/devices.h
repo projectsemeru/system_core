@@ -50,6 +50,12 @@ class Permissions {
     gid_t gid() const { return gid_; }
 
   protected:
+    enum class PathMatchType {
+        kExact,
+        kPrefix,
+        kWildcard,
+    };
+
     const std::string& name() const { return name_; }
 
   private:
@@ -57,8 +63,7 @@ class Permissions {
     mode_t perm_;
     uid_t uid_;
     gid_t gid_;
-    bool prefix_;
-    bool wildcard_;
+    PathMatchType match_type_;
     bool no_fnm_pathname_;
 };
 
@@ -67,14 +72,17 @@ class SysfsPermissions : public Permissions {
     friend void TestSysfsPermissions(const SysfsPermissions& expected, const SysfsPermissions& test);
 
     SysfsPermissions(const std::string& name, const std::string& attribute, mode_t perm, uid_t uid,
-                     gid_t gid, bool no_fnm_pathname)
-        : Permissions(name, perm, uid, gid, no_fnm_pathname), attribute_(attribute) {}
+                     gid_t gid, bool no_fnm_pathname);
 
     bool MatchWithSubsystem(const std::string& path, const std::string& subsystem) const;
+    std::vector<std::string> FindMatchingAttributes(const std::string& path) const;
+
     void SetPermissions(const std::string& path) const;
+    void SetPermissionsInternal(const std::string& attribute_file) const;
 
   private:
     const std::string attribute_;
+    const bool wildcard_;
 };
 
 class Subsystem {

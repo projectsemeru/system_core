@@ -34,14 +34,12 @@ cc_defaults {
         "liblog",
     ],
     static_libs: [
-        "libbrotli",
         "libdm",
         "libfstab",
         "libsnapshot_flags_cc_lib",
         "update_metadata-protos",
     ],
     whole_static_libs: [
-        "libbrotli",
         "libcutils",
         "libext2_uuid",
         "libext4_utils",
@@ -170,6 +168,9 @@ cc_library_static {
     ],
     srcs: [":libsnapshot_sources"],
     recovery_available: true,
+    cflags: [
+        "-DLIBSNAPSHOT_NO_COW_WRITE",
+    ],
     static_libs: [
         "libfs_mgr",
     ],
@@ -193,7 +194,6 @@ cc_defaults {
         "liblog",
     ],
     static_libs: [
-        "libbrotli",
         "libz",
         "liblz4",
         "libzstd",
@@ -285,7 +285,6 @@ cc_defaults {
         "android.hardware.boot@1.0",
         "android.hardware.boot@1.1",
         "android.hardware.boot-V1-ndk",
-        "libbrotli",
         "libfs_mgr_binder",
         "libgflags",
         "libgsi",
@@ -326,6 +325,31 @@ cc_test {
 }
 
 cc_test {
+    name: "vab_legacy_tests",
+    defaults: [
+        "libsnapshot_test_defaults",
+        "libsnapshot_hal_deps",
+    ],
+    cppflags: [
+        "-DLIBSNAPSHOT_TEST_VAB_LEGACY",
+    ],
+    test_suites: [
+        "general-tests",
+    ],
+    compile_multilib: "64",
+    test_options: {
+        // Legacy VAB launched in Android R.
+        min_shipping_api_level: 30,
+        test_runner_options: [
+            {
+                name: "force-no-test-error",
+                value: "false",
+            },
+        ],
+    },
+}
+
+cc_test {
     name: "vts_ota_config_test",
     srcs: [
         "vts_ota_config_test.cpp",
@@ -355,7 +379,6 @@ cc_binary {
         "android/snapshot/snapshot.proto",
     ],
     static_libs: [
-        "libbrotli",
         "libfstab",
         "libz",
         "libavb",
@@ -416,7 +439,6 @@ cc_test {
         "libz",
     ],
     static_libs: [
-        "libbrotli",
         "libgtest",
         "libsnapshot_cow",
     ],
@@ -450,7 +472,6 @@ cc_binary {
     ],
     static_libs: [
         "libbase",
-        "libbrotli",
         "libcrypto_static",
         "liblog",
         "libgflags",
@@ -486,7 +507,6 @@ cc_binary {
         "libext4_utils",
         "libsnapshot_cow",
         "libcrypto",
-        "libbrotli",
         "libz",
         "libdm",
         "liblz4",

@@ -92,6 +92,10 @@ void LaunchFirstStageSnapuserd(bool use_ublk) {
         argv.push_back(const_cast<char*>("-user_snapshot"));
         if (use_ublk) {
             argv.push_back(const_cast<char*>("-ublk"));
+        } else {
+            // Lets add -noublk flag so we make the intent explicit
+            // and don't depend on default flag value in snapuserd_daemon.cpp
+            argv.push_back(const_cast<char*>("-noublk"));
         }
         argv.push_back(nullptr);
 

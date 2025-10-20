@@ -262,6 +262,8 @@ bool UserSnapshotServer::Receivemsg(android::base::borrowed_fd fd, const std::st
     } else if (cmd == "resume_merge") {
         handlers_->ResumeMerge();
         return Sendmsg(fd, "success");
+    } else if (cmd == "get_mode") {
+        return Sendmsg(fd, is_ublk_enabled_ ? kSnapuserdModeUblk : kSnapuserdModeDmUser);
     } else if (cmd == "create") {
         // Create the snapshot device
         // Message format:

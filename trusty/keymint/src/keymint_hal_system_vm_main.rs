@@ -19,7 +19,7 @@
 use android_trusty_commservice::aidl::android::trusty::commservice::ICommService::ICommService;
 use anyhow::{anyhow, bail, Context, Result};
 use binder::{self, AccessorProvider, ProcessState, Strong};
-use kmr_hal::{register_binder_services, send_hal_info, SerializedChannel, ALL_HALS};
+use kmr_hal::{register_binder_services, send_hal_info, Hal, SerializedChannel, ALL_HALS};
 use log::{error, info, warn};
 use std::{
     ops::DerefMut,
@@ -74,10 +74,16 @@ fn main() {
 fn inner_main() -> Result<()> {
     setup_logging_and_panic_hook();
 
-    if cfg!(feature = "nonsecure") {
-        warn!("Non-secure Trusty KM HAL service is starting.");
-    } else {
-        info!("Trusty KM HAL service is starting.");
+    info!("Trusty KM HAL service is starting.");
+    if cfg!(feature = "vm_rot_nonsecure") {
+        warn!("Trusty KM HAL: non-secure RoT initialization.");
+    }
+    if cfg!(feature = "vm_reprovisioning_via_hal") {
+        // only works when provisioning is allowed
+        // shall only be used on test devices as  this erases
+        // previous provisioning
+        // note: only enabled on userdebug and eng builds
+        warn!("Trusty KM HAL: Reprovisioning from android properties!");
     }
 
     info!("Starting thread pool.");
@@ -94,10 +100,23 @@ fn inner_main() -> Result<()> {
         .context("failed to get ICommService interface from accessor")?;
     let channel: HalChannel = CommServiceChannel { comm_service }.into();
 
-    #[cfg(feature = "nonsecure")]
-    kmr_hal_nonsecure::send_boot_info_and_attestation_id_info(&channel.0)?;
+    #[cfg(feature = "vm_rot_nonsecure")]
+    kmr_hal_nonsecure::send_boot_info(&channel.0)?;
 
-    register_binder_services(&channel.0, ALL_HALS, SERVICE_INSTANCE)?;
+    #[cfg(feature = "vm_reprovisioning_via_hal")]
+    kmr_hal_nonsecure::send_attestation_id_info(&channel.0)?;
+
+    // We are not registering SharedSecret here. If we are running using placeholder HALs, we will
+    // serve the HAL using an accessor, not this legacy method. If placeholder HALs are not used,
+    // this will be served by a separate service directly talking with HwCrypto.
+    let all_hals_minus_shared_secret: Vec<_> =
+        ALL_HALS.iter().filter(|&x| *x != Hal::SharedSecret).copied().collect();
+
+    register_binder_services(
+        &channel.0,
+        all_hals_minus_shared_secret.as_slice(),
+        SERVICE_INSTANCE,
+    )?;
 
     // Send the HAL service information to the TA
     channel.with(|c| send_hal_info(c).context("failed to populate HAL info"))?;

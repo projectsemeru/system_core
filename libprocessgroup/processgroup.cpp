@@ -44,7 +44,6 @@
 #include <android-base/logging.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
-#include <build_flags.h>
 #include <cutils/android_filesystem_config.h>
 #include <processgroup/processgroup.h>
 #include <task_profiles.h>
@@ -314,13 +313,12 @@ void removeAllEmptyProcessGroups() {
     if (CgroupGetControllerPath(CGROUPV2_HIERARCHY_NAME, &path)) {
         cgroups.push_back(path);
     }
-    if (android::libprocessgroup_flags::cgroup_v2_sys_app_isolation()) {
-        for (const char* sub : {"apps", "system"}) {
-            std::string subpath = path + "/" + sub;
-            struct stat st;
-            if (stat(subpath.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
-                cgroups.push_back(subpath);
-            }
+
+    for (const char* sub : {"apps", "system"}) {
+        std::string subpath = path + "/" + sub;
+        struct stat st;
+        if (stat(subpath.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+            cgroups.push_back(subpath);
         }
     }
 
@@ -565,11 +563,11 @@ static int KillProcessGroup(
         std::chrono::steady_clock::time_point until = std::chrono::steady_clock::now() + 2200ms) {
     if (uid < 0) {
         LOG(ERROR) << __func__ << ": invalid UID " << uid;
-        return -1;
+        return -EINVAL;
     }
     if (initialPid <= 0) {
         LOG(ERROR) << __func__ << ": invalid PID " << initialPid;
-        return -1;
+        return -EINVAL;
     }
 
     // Always attempt to send a kill signal to at least the initialPid, at least once, regardless of
@@ -731,11 +729,11 @@ static int createProcessGroupInternal(uid_t uid, pid_t initialPid, std::string c
 int createProcessGroup(uid_t uid, pid_t initialPid, bool memControl) {
     if (uid < 0) {
         LOG(ERROR) << __func__ << ": invalid UID " << uid;
-        return -1;
+        return -EINVAL;
     }
     if (initialPid <= 0) {
         LOG(ERROR) << __func__ << ": invalid PID " << initialPid;
-        return -1;
+        return -EINVAL;
     }
 
     if (memControl && !UsePerAppMemcg()) {

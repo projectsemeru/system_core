@@ -73,6 +73,7 @@ void dump_backtrace_thread(int output_fd, unwindstack::AndroidUnwinder* unwinder
     return;
   }
 
+  data.DemangleFunctionNames();
   log_backtrace(&log, unwinder, data, "  ");
 }
 
