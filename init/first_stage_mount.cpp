@@ -589,7 +589,7 @@ static bool MaybeDeriveMicrodroidVendorDiceNode(Fstab* fstab) {
     // works.
     LOG(INFO) << "Deriving dice node for microdroid vendor partition";
     signal(SIGCHLD, SIG_DFL);
-    if (!ForkExecveAndWaitForCompletion(args[0], (char**)args.data())) {
+    if (ForkExecveAndWaitForCompletion(args[0], (char**)args.data()) != 0) {
         LOG(ERROR) << "Failed to derive microdroid vendor dice node";
         return false;
     }
