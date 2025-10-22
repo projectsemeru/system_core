@@ -89,7 +89,11 @@ int is_data_checkpoint_active(bool* active) {
     /* We can't handle e.g., ext4. Nothing we can do about it for now. */
     if (dataEntry->fs_type != "f2fs") {
         ALOGW("Checkpoint status not supported for filesystem %s\n", dataEntry->fs_type.c_str());
-        checkpointingDoneForever = true;
+        if (voldConnected) {
+            *active = voldPossibleCheckpointing.load();
+        } else {
+            checkpointingDoneForever = true;
+        }
         return 0;
     }
 
