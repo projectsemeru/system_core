@@ -253,7 +253,8 @@ std::unique_ptr<IImageManager> IImageManager::Open(const std::string& dir,
 
     auto status = service->openImageService(dir, &manager);
     if (!status.isOk() || !manager) {
-        LOG(ERROR) << "Could not acquire IImageManager: " << status.exceptionMessage().c_str();
+        LOG(ERROR) << "Could not acquire IImageManager: " << status
+                   << " manager is null: " << (manager == nullptr);
         return nullptr;
     }
     return std::make_unique<ImageManagerBinder>(std::move(service), std::move(manager));
