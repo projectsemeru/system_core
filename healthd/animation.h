@@ -75,12 +75,12 @@ struct animation {
     int cur_cycle;
     int num_cycles;  // Number of cycles to complete before blanking the screen
 
-    int cur_level;  // current battery level being animated (0-100)
+    int cur_level;   // current battery level being animated (0-100)
     int cur_status;  // current battery status - see BatteryService.h for BATTERY_STATUS_*
 
     ~animation() { delete frames; }
 };
 
-}
+}  // namespace android
 
-#endif // HEALTHD_ANIMATION_H
+#endif  // HEALTHD_ANIMATION_H
