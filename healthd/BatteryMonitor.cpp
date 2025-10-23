@@ -23,6 +23,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <glob.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -47,6 +48,8 @@
 
 #define POWER_SUPPLY_SUBSYSTEM "power_supply"
 #define POWER_SUPPLY_SYSFS_PATH "/sys/class/" POWER_SUPPLY_SUBSYSTEM
+#define DEV_GLOB "/sys/devices/platform/*gcdd/system_dev_stat"
+#define CDD_SYSTEM_DEVICE_TEMP 8
 #define FAKE_BATTERY_CAPACITY 42
 #define FAKE_BATTERY_TEMPERATURE 424
 #define MILLION 1.0e6
@@ -144,6 +147,17 @@ BatteryMonitor::BatteryMonitor()
       mBatteryHealthStatus(BatteryMonitor::BH_UNKNOWN),
       mHealthInfo(std::make_unique<HealthInfo>()) {
     initHealthInfo(mHealthInfo.get());
+    glob_t globbuf;
+    int ret = glob(DEV_GLOB, GLOB_MARK, nullptr, &globbuf);
+    if (ret) {
+        KLOG_ERROR(LOG_TAG, "Failed to lookup glob %s: %d\n", DEV_GLOB, ret);
+    } else {
+        for (int i = 0; globbuf.gl_pathv[i]; i++) {
+            if (access(globbuf.gl_pathv[i], F_OK) == 0) {
+                mDevPath = String8(globbuf.gl_pathv[i]);
+            }
+        }
+    }
 }
 
 BatteryMonitor::~BatteryMonitor() {}
@@ -531,6 +545,25 @@ void BatteryMonitor::updateValues(void) {
     }
 }
 
+static void doLogTemperature(const HealthInfo& props, const char* devPath) {
+    char tempstate[12] = {0};
+    FILE *fp;
+    int ret;
+
+    snprintf(tempstate, sizeof(tempstate), "0x%x 0x%x", CDD_SYSTEM_DEVICE_TEMP,
+            abs(props.batteryTemperatureTenthsCelsius / 10));
+
+    fp = fopen(devPath, "w");
+    if (fp != NULL) {
+        ret = fputs(tempstate, fp);
+        if (ret)
+            KLOG_ERROR(LOG_TAG, "record battery temp failed: %d\n", ret);
+        fclose(fp);
+    } else {
+            KLOG_ERROR(LOG_TAG, "Error, failed to open file: %s\n", devPath);
+    }
+}
+
 static void doLogValues(const HealthInfo& props, const struct healthd_config& healthd_config) {
     char dmesgline[256];
     size_t len;
@@ -541,7 +574,8 @@ static void doLogValues(const HealthInfo& props, const struct healthd_config& he
                  abs(props.batteryTemperatureTenthsCelsius / 10),
                  abs(props.batteryTemperatureTenthsCelsius % 10), props.batteryHealth,
                  props.batteryStatus);
-
+        if(!healthd_config.devstatusPath.empty())
+            doLogTemperature(props, healthd_config.devstatusPath.c_str());
         len = strlen(dmesgline);
         if (!healthd_config.batteryCurrentNowPath.empty()) {
             len += snprintf(dmesgline + len, sizeof(dmesgline) - len, " c=%d",
@@ -800,6 +834,7 @@ void BatteryMonitor::init(struct healthd_config *hc) {
     char pval[PROPERTY_VALUE_MAX];
 
     mHealthdConfig = hc;
+    mHealthdConfig->devstatusPath = mDevPath;
     std::unique_ptr<DIR, decltype(&closedir)> dir(opendir(POWER_SUPPLY_SYSFS_PATH), closedir);
     if (dir == NULL) {
         KLOG_ERROR(LOG_TAG, "Could not open %s\n", POWER_SUPPLY_SYSFS_PATH);
