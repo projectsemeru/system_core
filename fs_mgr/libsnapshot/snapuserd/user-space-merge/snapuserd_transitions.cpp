@@ -649,13 +649,9 @@ void SnapshotHandler::SetMergeFailed(size_t ra_index) {
 // Invoked by worker threads when I/O is complete on a "MERGE_PENDING"
 // Block. If there are no more in-flight I/Os, wake up merge thread
 // to resume merging.
-void SnapshotHandler::NotifyIOCompletion(uint64_t new_block) {
-    auto it = block_to_ra_index_.find(new_block);
-    CHECK(it != block_to_ra_index_.end()) << " invalid block: " << new_block;
-
+void SnapshotHandler::NotifyIOCompletion(int ra_index) {
     bool pending_ios = true;
 
-    int ra_index = it->second;
     MergeGroupState* blk_state = merge_blk_state_[ra_index].get();
     {
         std::unique_lock<std::mutex> lock(blk_state->m_lock);
@@ -691,19 +687,27 @@ bool SnapshotHandler::GetRABuffer(std::unique_lock<std::mutex>* lock, uint64_t b
 
 // Invoked by worker threads in the I/O path. This is called when a sector
 // is mapped to a COPY/XOR COW op.
-MERGE_GROUP_STATE SnapshotHandler::ProcessMergingBlock(uint64_t new_block, void* buffer) {
-    auto it = block_to_ra_index_.find(new_block);
-    if (it == block_to_ra_index_.end()) {
-        return MERGE_GROUP_STATE::GROUP_INVALID;
+MERGE_GROUP_STATE SnapshotHandler::ProcessMergingBlock(uint64_t new_block, int ra_index,
+                                                       void* buffer) {
+    MergeGroupState* blk_state = merge_blk_state_[ra_index].get();
+    MERGE_GROUP_STATE state = blk_state->merge_state_;
+
+    // Lockless check for optimization.
+    // If the merge is completed or failed, we can return immediately.
+    // These are terminal states.
+    if (state == MERGE_GROUP_STATE::GROUP_MERGE_COMPLETED ||
+        state == MERGE_GROUP_STATE::GROUP_MERGE_FAILED) {
+        return state;
     }
 
-    int ra_index = it->second;
-    MergeGroupState* blk_state = merge_blk_state_[ra_index].get();
+    // reconstructed_from_cow is a write-once flag. It is safe to read it
+    // without a lock.
+    bool reconstructed = blk_state->reconstructed_from_cow;
+
     {
-        std::lock_guard<std::mutex> buffer_lock(GetBufferLock());
         std::unique_lock<std::mutex> lock(blk_state->m_lock);
 
-        MERGE_GROUP_STATE state = blk_state->merge_state_;
+        state = blk_state->merge_state_;
         switch (state) {
             case MERGE_GROUP_STATE::GROUP_MERGE_PENDING: {
                 // When resuming a merge after a crash, a block may have been
@@ -712,8 +716,11 @@ MERGE_GROUP_STATE SnapshotHandler::ProcessMergingBlock(uint64_t new_block, void*
                 // We must check for and prioritize this data
                 // from the scratch space over the source block, especially
                 // for overlapping blocks or XOR ops.
-                if (GetRABuffer(&lock, new_block, buffer)) {
-                    return (MERGE_GROUP_STATE::GROUP_MERGE_IN_PROGRESS);
+                if (reconstructed) {
+                    std::lock_guard<std::mutex> buffer_lock(GetBufferLock());
+                    if (GetRABuffer(&lock, new_block, buffer)) {
+                        return (MERGE_GROUP_STATE::GROUP_MERGE_IN_PROGRESS);
+                    }
                 }
                 blk_state->num_ios_in_progress += 1;  // ref count
                 [[fallthrough]];
@@ -729,6 +736,7 @@ MERGE_GROUP_STATE SnapshotHandler::ProcessMergingBlock(uint64_t new_block, void*
                 [[fallthrough]];
             }
             case MERGE_GROUP_STATE::GROUP_MERGE_IN_PROGRESS: {
+                std::lock_guard<std::mutex> buffer_lock(GetBufferLock());
                 if (!GetRABuffer(&lock, new_block, buffer)) {
                     return MERGE_GROUP_STATE::GROUP_INVALID;
                 }

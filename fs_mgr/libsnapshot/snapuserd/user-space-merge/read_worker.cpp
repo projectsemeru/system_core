@@ -139,7 +139,15 @@ bool ReadWorker::ProcessZeroOp(void* buffer) {
 }
 
 bool ReadWorker::ProcessOrderedOp(const CowOperation* cow_op, void* buffer) {
-    MERGE_GROUP_STATE state = snapuserd_->ProcessMergingBlock(cow_op->new_block, buffer);
+    std::optional<int> ra_index_opt = snapuserd_->FindRaIndex(cow_op->new_block);
+    if (!ra_index_opt) {
+        // if ra_index_ is not found, that means we treat this as
+        // state MERGE_GROUP_STATE::GROUP_INVALID
+        return false;
+    }
+    int ra_index = *ra_index_opt;
+
+    MERGE_GROUP_STATE state = snapuserd_->ProcessMergingBlock(cow_op->new_block, ra_index, buffer);
 
     switch (state) {
         case MERGE_GROUP_STATE::GROUP_MERGE_COMPLETED: {
@@ -165,7 +173,7 @@ bool ReadWorker::ProcessOrderedOp(const CowOperation* cow_op, void* buffer) {
 
             // I/O is complete - decrement the refcount irrespective of the return
             // status
-            snapuserd_->NotifyIOCompletion(cow_op->new_block);
+            snapuserd_->NotifyIOCompletion(ra_index);
             return ret;
         }
         // We already have the data in the buffer retrieved from RA thread.
