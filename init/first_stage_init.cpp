@@ -46,6 +46,7 @@
 #include "debug_ramdisk.h"
 #include "first_stage_console.h"
 #include "first_stage_mount.h"
+#include "ota_utils.h"
 #include "reboot_utils.h"
 #include "second_stage_resources.h"
 #include "snapuserd_transition.h"
@@ -81,7 +82,7 @@ void FreeRamdisk(DIR* dir, dev_t dev) {
         bool is_dir = false;
 
         if (de->d_type == DT_DIR || de->d_type == DT_UNKNOWN) {
-            struct stat info {};
+            struct stat info{};
             if (fstatat(dfd, de->d_name, &info, AT_SYMLINK_NOFOLLOW) != 0) {
                 continue;
             }
@@ -200,7 +201,7 @@ std::string GetModuleLoadList(BootMode boot_mode, const std::string& dir_path) {
     }
 
     if (module_load_file != "modules.load") {
-        struct stat fileStat {};
+        struct stat fileStat{};
         std::string load_path = dir_path + "/" + module_load_file;
         // Fall back to modules.load if the other files aren't accessible
         if (stat(load_path.c_str(), &fileStat)) {
@@ -213,9 +214,9 @@ std::string GetModuleLoadList(BootMode boot_mode, const std::string& dir_path) {
 
 #define MODULE_BASE_DIR "/lib/modules"
 bool LoadKernelModules(BootMode boot_mode, bool want_console,
-                       Modprobe::LoadParallelMode want_parallel_mode,
-                       bool want_parallel_test, int& modules_loaded) {
-    struct utsname uts {};
+                       Modprobe::LoadParallelMode want_parallel_mode, bool want_parallel_test,
+                       int& modules_loaded) {
+    struct utsname uts{};
     if (uname(&uts)) {
         LOG(FATAL) << "Failed to get kernel version.";
     }
@@ -281,10 +282,10 @@ bool LoadKernelModules(BootMode boot_mode, bool want_console,
     }
 
     Modprobe m({MODULE_BASE_DIR}, GetModuleLoadList(boot_mode, MODULE_BASE_DIR));
-    bool retval = (want_parallel_mode != Modprobe::LoadParallelMode::NONE) ?
-            m.LoadModulesParallel(std::thread::hardware_concurrency(),
-                want_parallel_mode, want_parallel_test) :
-            m.LoadListedModules(!want_console);
+    bool retval = (want_parallel_mode != Modprobe::LoadParallelMode::NONE)
+                          ? m.LoadModulesParallel(std::thread::hardware_concurrency(),
+                                                  want_parallel_mode, want_parallel_test)
+                          : m.LoadListedModules(!want_console);
     modules_loaded = m.GetModuleCount();
     if (modules_loaded > 0) {
         LOG(INFO) << "Loaded " << modules_loaded << " modules from " << MODULE_BASE_DIR;
@@ -294,11 +295,10 @@ bool LoadKernelModules(BootMode boot_mode, bool want_console,
 
 static bool IsChargerMode(const std::string& cmdline, const std::string& bootconfig) {
     return bootconfig.find("androidboot.mode = \"charger\"") != std::string::npos ||
-            cmdline.find("androidboot.mode=charger") != std::string::npos;
+           cmdline.find("androidboot.mode=charger") != std::string::npos;
 }
 
-static BootMode GetBootMode(const std::string& cmdline, const std::string& bootconfig)
-{
+static BootMode GetBootMode(const std::string& cmdline, const std::string& bootconfig) {
     if (IsChargerMode(cmdline, bootconfig))
         return BootMode::CHARGER_MODE;
     else if (IsRecoveryMode() && !ForceNormalBoot(cmdline, bootconfig))
@@ -334,10 +334,6 @@ static std::unique_ptr<FirstStageMount> CreateFirstStageMount(const std::string&
 }
 
 int FirstStageMain(int argc, char** argv) {
-    if (REBOOT_BOOTLOADER_ON_PANIC) {
-        InstallRebootSignalHandlers();
-    }
-
     boot_clock::time_point start_time = boot_clock::now();
 
     std::vector<std::pair<std::string, int>> errors;
@@ -431,7 +427,7 @@ int FirstStageMain(int argc, char** argv) {
         PLOG(ERROR) << "Could not opendir(\"/\"), not freeing ramdisk";
     }
 
-    struct stat old_root_info {};
+    struct stat old_root_info{};
     if (stat("/", &old_root_info) != 0) {
         PLOG(ERROR) << "Could not stat(\"/\"), not freeing ramdisk";
         old_root_dir.reset();
@@ -440,25 +436,23 @@ int FirstStageMain(int argc, char** argv) {
     auto want_console = ALLOW_FIRST_STAGE_CONSOLE ? FirstStageConsole(cmdline, bootconfig) : 0;
     auto want_parallel_mode = Modprobe::LoadParallelMode::NONE;
     auto want_parallel_test = false;
-    if (bootconfig.find("androidboot.load_modules_parallel = \"true\"")
-        != std::string::npos)
+    if (bootconfig.find("androidboot.load_modules_parallel = \"true\"") != std::string::npos)
         want_parallel_mode = Modprobe::LoadParallelMode::NORMAL;
-    else if (bootconfig.find("androidboot.load_modules_parallel = \"performance\"")
-        != std::string::npos)
+    else if (bootconfig.find("androidboot.load_modules_parallel = \"performance\"") !=
+             std::string::npos)
         want_parallel_mode = Modprobe::LoadParallelMode::PERFORMANCE;
-    else if (bootconfig.find("androidboot.load_modules_parallel = \"conservative\"")
-        != std::string::npos)
+    else if (bootconfig.find("androidboot.load_modules_parallel = \"conservative\"") !=
+             std::string::npos)
         want_parallel_mode = Modprobe::LoadParallelMode::CONSERVATIVE;
 
-    if (bootconfig.find("androidboot.load_modules_parallel_test = \"true\"")
-        != std::string::npos)
+    if (bootconfig.find("androidboot.load_modules_parallel_test = \"true\"") != std::string::npos)
         want_parallel_test = true;
 
     boot_clock::time_point module_start_time = boot_clock::now();
     int module_count = 0;
     BootMode boot_mode = GetBootMode(cmdline, bootconfig);
-    if (!LoadKernelModules(boot_mode, want_console, want_parallel_mode,
-        want_parallel_test, module_count)) {
+    if (!LoadKernelModules(boot_mode, want_console, want_parallel_mode, want_parallel_test,
+                           module_count)) {
         if (want_console != FirstStageConsoleParam::DISABLED) {
             LOG(ERROR) << "Failed to load kernel modules, starting console";
         } else {
@@ -548,6 +542,8 @@ int FirstStageMain(int argc, char** argv) {
 
         if (!created_devices && !fsm->DoCreateDevices()) {
             LOG(FATAL) << "Failed to create devices required for first stage mount";
+        } else if (REBOOT_BOOTLOADER_ON_PANIC && !AttemptingToBootNewSlot()) {
+            InstallRebootSignalHandlers();
         }
 
         if (!fsm->DoFirstStageMount()) {
@@ -555,7 +551,7 @@ int FirstStageMain(int argc, char** argv) {
         }
     }
 
-    struct stat new_root_info {};
+    struct stat new_root_info{};
     if (stat("/", &new_root_info) != 0) {
         PLOG(ERROR) << "Could not stat(\"/\"), not freeing ramdisk";
         old_root_dir.reset();

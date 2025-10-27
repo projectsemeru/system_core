@@ -93,6 +93,7 @@
 #include "system/core/init/property_service.pb.h"
 #include "tradeinmode.h"
 #include "util.h"
+#include "ota_utils.h"
 
 #ifndef RECOVERY
 #include "com_android_apex.h"
@@ -1052,7 +1053,7 @@ static void StartSecondStageBootMonitor(int timeout_sec) {
 }
 
 int SecondStageMain(int argc, char** argv) {
-    if (REBOOT_BOOTLOADER_ON_PANIC) {
+    if (REBOOT_BOOTLOADER_ON_PANIC && !AttemptingToBootNewSlot()) {
         InstallRebootSignalHandlers();
     }
 

@@ -31,6 +31,7 @@
 #include <unwindstack/AndroidUnwinder.h>
 
 #include "capabilities.h"
+#include "ota_utils.h"
 #include "reboot_utils.h"
 #include "util.h"
 
@@ -99,8 +100,8 @@ bool IsRebootCapable() {
     return value == CAP_SET;
 }
 
-void __attribute__((noreturn))
-RebootSystem(unsigned int cmd, const std::string& rebootTarget, const std::string& reboot_reason) {
+void __attribute__((noreturn)) RebootSystem(unsigned int cmd, const std::string& rebootTarget,
+                                            const std::string& reboot_reason) {
     LOG(INFO) << "Reboot ending, jumping to kernel";
 
     if (!IsRebootCapable()) {
