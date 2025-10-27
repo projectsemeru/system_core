@@ -23,9 +23,18 @@
 
 #include "animation.h"
 
-#define LOGE(x...) do { KLOG_ERROR("charger", x); } while (0)
-#define LOGW(x...) do { KLOG_WARNING("charger", x); } while (0)
-#define LOGV(x...) do { KLOG_DEBUG("charger", x); } while (0)
+#define LOGE(x...)                \
+    do {                          \
+        KLOG_ERROR("charger", x); \
+    } while (0)
+#define LOGW(x...)                  \
+    do {                            \
+        KLOG_WARNING("charger", x); \
+    } while (0)
+#define LOGV(x...)                \
+    do {                          \
+        KLOG_DEBUG("charger", x); \
+    } while (0)
 
 namespace android {
 
@@ -95,8 +104,8 @@ bool parse_animation_desc(const std::string& content, animation* anim) {
             continue;
         } else if (remove_prefix(line, animation_prefix, &rest)) {
             int start = 0, end = 0;
-            if (sscanf(rest, "%d %d %n%*s%n", &anim->num_cycles, &anim->first_frame_repeats,
-                    &start, &end) != 2 ||
+            if (sscanf(rest, "%d %d %n%*s%n", &anim->num_cycles, &anim->first_frame_repeats, &start,
+                       &end) != 2 ||
                 end == 0) {
                 LOGE("Bad animation format: %s\n", line.c_str());
                 return false;
@@ -115,8 +124,8 @@ bool parse_animation_desc(const std::string& content, animation* anim) {
                 LOGE("Bad percent_display format: %s\n", line.c_str());
                 return false;
             }
-        } else if (sscanf(line.c_str(), " frame: %d %d %d",
-                &frame.disp_time, &frame.min_level, &frame.max_level) == 3) {
+        } else if (sscanf(line.c_str(), " frame: %d %d %d", &frame.disp_time, &frame.min_level,
+                          &frame.max_level) == 3) {
             frames.push_back(std::move(frame));
         } else {
             LOGE("Malformed animation description line: %s\n", line.c_str());

@@ -95,3 +95,7 @@ subsystem vfio
 /sys/devices/system/cpu/cpu*   cpufreq/scaling_min_freq   0664  system system
 /sys/devices/virtual/misc/uhid/*/leds/* brightness   0664  system system
 /sys/devices/virtual/misc/uhid/*/leds/* multi_intensity   0664  system system
+/sys/bus/usb/devices/* authorized	0664 root system
+/sys/bus/usb/devices/* authorized_default	0664 root system
+/sys/devices/*/usb[0-9]/* authorized_default 0664  root system
+/sys/devices/*/usb[0-9]/* authorized 0664  root system

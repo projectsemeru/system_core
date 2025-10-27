@@ -3361,9 +3361,9 @@ TEST_F(CrasherTest, buffer_overflow_detection_write) {
   GTEST_SKIP() << "Only supported on 64 bit";
 #endif
 
-  SKIP_WITH_HWASAN << "hwasan detects this case differently";
-
-  SKIP_WITHOUT_SCUDO << "Only Scudo can detect these errors";
+  if (!android::base::running_with_hwasan() && !android::base::running_with_scudo()) {
+    GTEST_SKIP() << "Requires either hwasan or Scudo.";
+  }
 
   StartProcess([]() {
     // Allocate large enough that should result in a mmap allocation.
@@ -3381,12 +3381,18 @@ TEST_F(CrasherTest, buffer_overflow_detection_write) {
   unique_fd output_fd;
   StartIntercept(&output_fd);
   FinishCrasher();
-  AssertDeath(SIGSEGV);
+  if (android::base::running_with_hwasan()) {
+    AssertDeath(SIGABRT);
+  } else {
+    AssertDeath(SIGSEGV);
+  }
   ASSERT_NO_FATAL_FAILURE(FinishIntercept());
 
   std::string result;
   ConsumeFd(std::move(output_fd), &result);
-  if (mte_supported() && mte_enabled()) {
+  if (android::base::running_with_hwasan()) {
+    ASSERT_MATCH(result, R"(Cause: heap-buffer-overflow)");
+  } else if (mte_supported() && mte_enabled()) {
     ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Overflow)");
   } else {
     ASSERT_MATCH(result, R"(Cause: possible buffer overflow)");
@@ -3399,9 +3405,9 @@ TEST_F(CrasherTest, buffer_underflow_detection_write) {
   GTEST_SKIP() << "Only supported on 64 bit";
 #endif
 
-  SKIP_WITH_HWASAN << "hwasan detects this case differently";
-
-  SKIP_WITHOUT_SCUDO << "Only Scudo can detect these errors";
+  if (!android::base::running_with_hwasan() && !android::base::running_with_scudo()) {
+    GTEST_SKIP() << "Requires either hwasan or Scudo.";
+  }
 
   StartProcess([]() {
     // Allocate large enough that should result in a mmap allocation.
@@ -3419,12 +3425,18 @@ TEST_F(CrasherTest, buffer_underflow_detection_write) {
   unique_fd output_fd;
   StartIntercept(&output_fd);
   FinishCrasher();
-  AssertDeath(SIGSEGV);
+  if (android::base::running_with_hwasan()) {
+    AssertDeath(SIGABRT);
+  } else {
+    AssertDeath(SIGSEGV);
+  }
   ASSERT_NO_FATAL_FAILURE(FinishIntercept());
 
   std::string result;
   ConsumeFd(std::move(output_fd), &result);
-  if (mte_supported() && mte_enabled()) {
+  if (android::base::running_with_hwasan()) {
+    ASSERT_MATCH(result, R"(Cause: heap-buffer-overflow)");
+  } else if (mte_supported() && mte_enabled()) {
     ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Underflow)");
   } else {
     ASSERT_MATCH(result, R"(Cause: possible buffer underflow)");
@@ -3437,9 +3449,9 @@ TEST_F(CrasherTest, buffer_overflow_detection_read) {
   GTEST_SKIP() << "Only supported on 64 bit";
 #endif
 
-  SKIP_WITH_HWASAN << "hwasan detects this case differently";
-
-  SKIP_WITHOUT_SCUDO << "Only Scudo can detect these errors";
+  if (!android::base::running_with_hwasan() && !android::base::running_with_scudo()) {
+    GTEST_SKIP() << "Requires either hwasan or Scudo.";
+  }
 
   StartProcess([]() {
     // Allocate large enough that should result in a mmap allocation.
@@ -3457,12 +3469,18 @@ TEST_F(CrasherTest, buffer_overflow_detection_read) {
   unique_fd output_fd;
   StartIntercept(&output_fd);
   FinishCrasher();
-  AssertDeath(SIGSEGV);
+  if (android::base::running_with_hwasan()) {
+    AssertDeath(SIGABRT);
+  } else {
+    AssertDeath(SIGSEGV);
+  }
   ASSERT_NO_FATAL_FAILURE(FinishIntercept());
 
   std::string result;
   ConsumeFd(std::move(output_fd), &result);
-  if (mte_supported() && mte_enabled()) {
+  if (android::base::running_with_hwasan()) {
+    ASSERT_MATCH(result, R"(Cause: heap-buffer-overflow)");
+  } else if (mte_supported() && mte_enabled()) {
     ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Overflow)");
   } else {
     ASSERT_MATCH(result, R"(Cause: possible buffer overflow)");
@@ -3475,9 +3493,9 @@ TEST_F(CrasherTest, buffer_underflow_detection_read) {
   GTEST_SKIP() << "Only supported on 64 bit";
 #endif
 
-  SKIP_WITH_HWASAN << "hwasan detects this case differently";
-
-  SKIP_WITHOUT_SCUDO << "Only Scudo can detect these errors";
+  if (!android::base::running_with_hwasan() && !android::base::running_with_scudo()) {
+    GTEST_SKIP() << "Requires either hwasan or Scudo.";
+  }
 
   StartProcess([]() {
     // Allocate large enough that should result in a mmap allocation.
@@ -3495,12 +3513,18 @@ TEST_F(CrasherTest, buffer_underflow_detection_read) {
   unique_fd output_fd;
   StartIntercept(&output_fd);
   FinishCrasher();
-  AssertDeath(SIGSEGV);
+  if (android::base::running_with_hwasan()) {
+    AssertDeath(SIGABRT);
+  } else {
+    AssertDeath(SIGSEGV);
+  }
   ASSERT_NO_FATAL_FAILURE(FinishIntercept());
 
   std::string result;
   ConsumeFd(std::move(output_fd), &result);
-  if (mte_supported() && mte_enabled()) {
+  if (android::base::running_with_hwasan()) {
+    ASSERT_MATCH(result, R"(Cause: heap-buffer-overflow)");
+  } else if (mte_supported() && mte_enabled()) {
     ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Underflow)");
   } else {
     ASSERT_MATCH(result, R"(Cause: possible buffer underflow)");

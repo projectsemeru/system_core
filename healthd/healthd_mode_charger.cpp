@@ -122,41 +122,41 @@ static constexpr const char* animation_desc_path = "/res/values/charger/animatio
 #endif
 
 static const animation BASE_ANIMATION = {
-    .text_clock =
-        {
-            .pos_x = 0,
-            .pos_y = 0,
+        .text_clock =
+                {
+                        .pos_x = 0,
+                        .pos_y = 0,
 
-            .color_r = 255,
-            .color_g = 255,
-            .color_b = 255,
-            .color_a = 255,
+                        .color_r = 255,
+                        .color_g = 255,
+                        .color_b = 255,
+                        .color_a = 255,
 
-            .font = nullptr,
-        },
-    .text_percent =
-        {
-            .pos_x = 0,
-            .pos_y = 0,
+                        .font = nullptr,
+                },
+        .text_percent =
+                {
+                        .pos_x = 0,
+                        .pos_y = 0,
 
-            .color_r = 255,
-            .color_g = 255,
-            .color_b = 255,
-            .color_a = 255,
-        },
+                        .color_r = 255,
+                        .color_g = 255,
+                        .color_b = 255,
+                        .color_a = 255,
+                },
 
-    .run = false,
+        .run = false,
 
-    .frames = nullptr,
-    .cur_frame = 0,
-    .num_frames = 0,
-    .first_frame_repeats = 2,
+        .frames = nullptr,
+        .cur_frame = 0,
+        .num_frames = 0,
+        .first_frame_repeats = 2,
 
-    .cur_cycle = 0,
-    .num_cycles = 3,
+        .cur_cycle = 0,
+        .num_cycles = 3,
 
-    .cur_level = 0,
-    .cur_status = BATTERY_STATUS_UNKNOWN,
+        .cur_level = 0,
+        .cur_status = BATTERY_STATUS_UNKNOWN,
 };
 
 void Charger::InitDefaultAnimationFrames() {
@@ -221,11 +221,11 @@ static void dump_last_kmsg(void) {
 
     LOGW("*************** LAST KMSG ***************\n");
     const char* kmsg[] = {
-        // clang-format off
+            // clang-format off
         "/sys/fs/pstore/console-ramoops-0",
         "/sys/fs/pstore/console-ramoops",
         "/proc/last_kmsg",
-        // clang-format on
+            // clang-format on
     };
     for (size_t i = 0; i < arraysize(kmsg) && buf.empty(); ++i) {
         auto fd = android_get_control_file(kmsg[i]);
