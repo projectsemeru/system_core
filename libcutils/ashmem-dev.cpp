@@ -44,7 +44,7 @@
 /*
  * Implementation of the userspace ashmem API for devices.
  *
- * This may use ashmem or memfd. See has_memfd_support().
+ * This may use ashmem or memfd. See use_memfd().
  *
  * See ashmem-host.cpp for the temporary file based alternative for the host.
  */
@@ -58,7 +58,7 @@ static bool debug_log = false;
 /* Determine if memfd can be supported. This is just one-time hardwork
  * which will be cached by the caller.
  */
-static bool __has_memfd_support() {
+static bool __use_memfd() {
     // Used to turn on/off the detection at runtime, in the future this
     // property will be removed once we switch everything over to memfd.
     //
@@ -70,46 +70,15 @@ static bool __has_memfd_support() {
         return false;
     }
 
-    // Check that the kernel supports memfd_create().
-    // This code needs to build on API levels before 30,
-    // so we can't use the libc wrapper.
-    android::base::unique_fd fd(
-            syscall(__NR_memfd_create, "test_android_memfd", MFD_CLOEXEC | MFD_ALLOW_SEALING));
-    if (fd == -1) {
-        ALOGE("memfd_create() failed: %m, no memfd support");
-        return false;
-    }
-
-    // Check that the kernel supports sealing.
-    if (fcntl(fd, F_ADD_SEALS, F_SEAL_FUTURE_WRITE) == -1) {
-        ALOGE("fcntl(F_ADD_SEALS) failed: %m, no memfd support");
-        return false;
-    }
-
-    // Check that the kernel supports truncation.
-    size_t buf_size = getpagesize();
-    if (ftruncate(fd, buf_size) == -1) {
-        ALOGE("ftruncate(%zd) failed to set memfd buffer size: %m, no memfd support", buf_size);
-        return false;
-    }
-
-    // Check that the kernel supports the ashmem ioctls on a memfd.
-    int ashmem_size = TEMP_FAILURE_RETRY(ioctl(fd, ASHMEM_GET_SIZE, 0));
-    if (ashmem_size != static_cast<int>(buf_size)) {
-        ALOGE("ioctl(ASHMEM_GET_SIZE): %d != buf_size: %zd , no ashmem-memfd compat support",
-              ashmem_size, buf_size);
-        return false;
-    }
-
     if (debug_log) {
         ALOGD("memfd: device has memfd support, using it");
     }
     return true;
 }
 
-bool has_memfd_support() {
-    static bool memfd_supported = __has_memfd_support();
-    return memfd_supported;
+bool use_memfd() {
+    static bool use_memfd = __use_memfd();
+    return use_memfd;
 }
 
 static std::string get_ashmem_device_path() {
@@ -214,7 +183,7 @@ int ashmem_valid(int fd) {
     return __ashmem_is_ashmem(fd, false) >= 0;
 }
 
-static int memfd_create_region(const char* name, size_t size) {
+int __memfd_create_region(const char* name, size_t size) {
     // This code needs to build on API levels before 30,
     // so we can't use the libc wrapper.
     android::base::unique_fd fd(syscall(__NR_memfd_create, name, MFD_CLOEXEC | MFD_ALLOW_SEALING));
@@ -241,6 +210,15 @@ static int memfd_create_region(const char* name, size_t size) {
     return fd.release();
 }
 
+int __ashmem_create_region(const char* name, size_t size) {
+    android::base::unique_fd fd(__ashmem_open());
+    if (!fd.ok() || TEMP_FAILURE_RETRY(ioctl(fd, ASHMEM_SET_NAME, name)) < 0 ||
+        TEMP_FAILURE_RETRY(ioctl(fd, ASHMEM_SET_SIZE, size)) < 0) {
+        return -1;
+    }
+    return fd.release();
+}
+
 /*
  * ashmem_create_region - creates a new ashmem region and returns the file
  * descriptor, or <0 on error
@@ -251,17 +229,8 @@ static int memfd_create_region(const char* name, size_t size) {
 int ashmem_create_region(const char* name, size_t size) {
     if (name == NULL) name = "none";
 
-    if (has_memfd_support()) {
-        return memfd_create_region(name, size);
-    }
-
-    android::base::unique_fd fd(__ashmem_open());
-    if (!fd.ok() ||
-        TEMP_FAILURE_RETRY(ioctl(fd, ASHMEM_SET_NAME, name)) < 0 ||
-        TEMP_FAILURE_RETRY(ioctl(fd, ASHMEM_SET_SIZE, size)) < 0) {
-        return -1;
-    }
-    return fd.release();
+    auto create_region = use_memfd() ? __memfd_create_region : __ashmem_create_region;
+    return create_region(name, size);
 }
 
 static int memfd_set_prot_region(int fd, int prot) {
