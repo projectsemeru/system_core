@@ -1,5 +1,4 @@
 use crate::Error;
-use crate::RecordArgs;
 use log::warn;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -55,11 +54,18 @@ pub fn can_perform_replay(pack_path: &Path, fingerprint_path: &Path) -> Result<b
     Ok(current_device_fingerprint.is_some_and(|fp| fp == saved_fingerprint.trim()))
 }
 
-/// Checks if we can perform record phase.
+/// Checks if we can perform record phase or if we should prepare device to record in the next boot.
+///
 /// Ensure that following conditions hold:
 ///   - File specified in ready_path exists. otherwise, create a new file and return false.
-///   - can_perform_replay is false.
-pub fn ensure_record_is_ready(
+///   - fingerprint contents are different from the current device fingerprint.
+///   - pack file does not exist.
+///
+/// If pack file exists but the fingerprint is different, it means we are in a new version
+/// first boot (either OTA update or rollback) so we should not record in this boot, but
+/// instead prepare the device to record from the next boot. So we delete both pack and
+/// fingerprint files and create a new fingerprint, then return false.
+pub fn can_perform_record(
     ready_path: &Path,
     pack_path: &Path,
     fingerprint_path: &Path,
@@ -75,21 +81,39 @@ pub fn ensure_record_is_ready(
         return Ok(false);
     }
 
-    let can_replay = can_perform_replay(pack_path, fingerprint_path)?;
-    Ok(!can_replay)
+    let saved_fingerprint = std::fs::read_to_string(fingerprint_path)?;
+
+    let current_device_fingerprint =
+        rustutils::android::system_properties::read("ro.build.fingerprint").map_err(|e| {
+            Error::Custom { error: format!("Failed to read ro.build.fingerprint: {e}") }
+        })?;
+
+    if current_device_fingerprint.is_some_and(|fp| fp == saved_fingerprint.trim()) {
+        // Not a new version and pack file already exists, do nothing.
+        if pack_path.exists() {
+            Ok(false)
+        // It's a second reboot after an update, or the pack file went missing, so we should record
+        } else {
+            Ok(true)
+        }
+    } else {
+        // It is a first boot of a new update or rollback, ensure pack file is deleted.
+        if pack_path.exists() {
+            std::fs::remove_file(pack_path)
+                .map_err(|_| Error::Custom { error: "Failed to remove pack file".to_string() })?;
+        }
+        // Update fingerprint value so we can issue a record in the next reboot.
+        write_build_fingerprint(fingerprint_path)?;
+        Ok(false)
+    }
 }
 
 /// Write build finger print to associate prefetch pack file
-pub fn write_build_fingerprint(args: &RecordArgs) -> Result<(), Error> {
-    let mut build_fingerprint_file = OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(&args.build_fingerprint_path)
-        .map_err(|source| Error::Create {
-            source,
-            path: args.build_fingerprint_path.to_str().unwrap().to_owned(),
-        })?;
+pub fn write_build_fingerprint(fingerprint_path: &Path) -> Result<(), Error> {
+    let mut build_fingerprint_file =
+        OpenOptions::new().write(true).create(true).truncate(true).open(fingerprint_path).map_err(
+            |source| Error::Create { source, path: fingerprint_path.to_str().unwrap().to_owned() },
+        )?;
 
     let device_build_fingerprint =
         rustutils::android::system_properties::read("ro.build.fingerprint").unwrap_or_default();
