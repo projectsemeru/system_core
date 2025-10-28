@@ -98,6 +98,7 @@ class BatteryMonitor {
     int mBatteryFixedTemperature;
     int mBatteryHealthStatus;
     std::unique_ptr<aidl::android::hardware::health::HealthInfo> mHealthInfo;
+    android::String8 mDevPath;
 };
 
 }; // namespace android
