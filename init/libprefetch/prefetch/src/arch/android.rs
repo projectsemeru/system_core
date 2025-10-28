@@ -120,7 +120,6 @@ pub fn write_build_fingerprint(fingerprint_path: &Path) -> Result<(), Error> {
     let device_build_fingerprint = device_build_fingerprint.unwrap_or_default();
 
     build_fingerprint_file.write_all(device_build_fingerprint.as_bytes())?;
-    build_fingerprint_file.sync_all()?;
 
     Ok(())
 }
