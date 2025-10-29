@@ -1051,6 +1051,7 @@ static bool load_buf_fd(unique_fd fd, struct fastboot_buffer* buf) {
         buf->file_type = FB_BUFFER_FD;
     }
 
+    lseek(fd.get(), 0, SEEK_SET);
     buf->fd = std::move(fd);
     return true;
 }
