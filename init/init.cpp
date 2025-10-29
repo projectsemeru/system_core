@@ -869,6 +869,10 @@ static void MountExtraFilesystems() {
 }
 
 static void InitExtraDevices() {
+    // No extra devices for microdroid. We want it as slim as possible.
+    if (IsMicrodroid()) {
+        return;
+    }
     if constexpr (com::android::apex::flags::mount_before_data()) {
         // Pre-create a bunch of loop devices to accelerate apexd later. This effectively overrides
         // CONFIG_BLK_DEV_LOOP_MIN_COUNT. 128 loop devices should be enough for now because most
