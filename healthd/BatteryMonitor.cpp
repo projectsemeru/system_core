@@ -145,7 +145,8 @@ BatteryMonitor::BatteryMonitor()
       mBatteryFixedCapacity(0),
       mBatteryFixedTemperature(0),
       mBatteryHealthStatus(BatteryMonitor::BH_UNKNOWN),
-      mHealthInfo(std::make_unique<HealthInfo>()) {
+      mHealthInfo(std::make_unique<HealthInfo>()),
+      mLastGoodBatteryLevel(std::nullopt) {
     initHealthInfo(mHealthInfo.get());
     glob_t globbuf;
     int ret = glob(DEV_GLOB, GLOB_MARK, nullptr, &globbuf);
@@ -406,10 +407,34 @@ void BatteryMonitor::updateValues(void) {
     else
         mHealthInfo->batteryPresent = mBatteryDevicePresent;
 
-    mHealthInfo->batteryLevel =
-            mBatteryFixedCapacity
-                    ? mBatteryFixedCapacity
-                    : tryGetIntField<int32_t>(mHealthdConfig->batteryCapacityPath).value_or(0);
+    if (mBatteryFixedCapacity) {
+        mHealthInfo->batteryLevel = mBatteryFixedCapacity;
+    } else {
+        const auto v = tryGetIntField<int32_t>(mHealthdConfig->batteryCapacityPath);
+        const auto now = std::chrono::steady_clock::now();
+        if (v.ok()) {
+            mLastGoodBatteryLevel = {now, v.value()};
+        } else if (!mHealthInfo->batteryPresent) {
+            // Battery is gone, so any previous value will be invalid but this
+            // isn't a noteworthy error.
+            mLastGoodBatteryLevel = std::nullopt;
+        } else {
+            // Error may be transient; retain the last-good value for a short time.
+            const auto expiration = mLastGoodBatteryLevel.has_value()
+                                            ? std::optional(mLastGoodBatteryLevel->first)
+                                            : std::nullopt;
+            if (expiration.has_value() && expiration.value() + kMaximumLevelStaleness < now) {
+                // Value became stale
+                mLastGoodBatteryLevel = std::nullopt;
+            }
+            KLOG_WARNING(LOG_TAG, "Failed to read battery level (%s): last-known state was %d",
+                         strerror(v.error().code()),
+                         mLastGoodBatteryLevel.has_value() ? mLastGoodBatteryLevel->second : 0);
+        }
+        mHealthInfo->batteryLevel =
+                mLastGoodBatteryLevel.has_value() ? mLastGoodBatteryLevel->second : 0;
+    }
+
     mHealthInfo->batteryVoltageMillivolts =
             tryGetIntField(mHealthdConfig->batteryVoltagePath).value_or(0) / 1000;
 
