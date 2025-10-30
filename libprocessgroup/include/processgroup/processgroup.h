@@ -29,7 +29,7 @@ bool CgroupsAvailable();
 bool CgroupGetControllerPath(const std::string& cgroup_name, std::string* path);
 bool CgroupGetControllerFromPath(const std::string& path, std::string* cgroup_name);
 bool CgroupGetAttributePath(const std::string& attr_name, std::string* path);
-// Provides the path for an attribute in a specific process group
+// Provides the path for an attribute in a specific cgroup
 // Returns false in case of error, true in case of success
 bool CgroupGetAttributePathForTask(const std::string& attr_name, pid_t tid, std::string* path);
 bool CgroupGetAttributePathForProcess(std::string_view attr_name, uid_t uid, pid_t pid,

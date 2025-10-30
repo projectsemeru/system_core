@@ -27,7 +27,7 @@ assert_type_eq_all!(libc::pid_t, i32);
 
 /// CGroup related functionality.
 pub mod cgroup {
-    /// Provides the path for an attribute in a specific process group
+    /// Provides the path for an attribute in a specific cgroup
     pub fn get_attribute_path_for_process(
         attr_name: &str,
         uid: libc::uid_t,
