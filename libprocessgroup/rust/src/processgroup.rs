@@ -63,6 +63,17 @@ pub fn kill_process_group(
         .ok_or("Failed to kill process group")
 }
 
+/// Set the profiles fora  given process.
+pub fn set_process_profiles(
+    uid: libc::uid_t,
+    pid: libc::pid_t,
+    profiles: &[&str],
+) -> Result<(), &'static str> {
+    inner::SetProcessProfilesRustBridge(uid, pid, profiles)
+        .then_some(())
+        .ok_or("Failed to set process profiles")
+}
+
 /// Set the task profiles for a given thread.
 pub fn set_task_profiles(
     tid: libc::pid_t,
@@ -91,6 +102,8 @@ mod inner {
         fn DropTaskProfilesResourceCaching();
 
         fn killProcessGroup(uid: u32, initial_pid: i32, signal: i32) -> i32;
+
+        fn SetProcessProfilesRustBridge(uid: u32, pid: i32, profiles: &[&str]) -> bool;
 
         fn SetTaskProfilesRustBridge(tid: i32, profiles: &[&str], use_fd_cache: bool) -> bool;
     }
