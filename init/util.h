@@ -40,6 +40,12 @@ enum mount_mode {
     MOUNT_MODE_LATE = 2,
 };
 
+enum class BootMode {
+    NORMAL_MODE,
+    RECOVERY_MODE,
+    CHARGER_MODE,
+};
+
 static const char kColdBootDoneProp[] = "ro.cold_boot_done";
 
 extern void (*trigger_shutdown)(const std::string& command);
