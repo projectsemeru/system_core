@@ -15,6 +15,8 @@
  */
 
 #include <sys/types.h>
+#include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -34,6 +36,17 @@ bool CgroupGetAttributePathForProcessRustBridge(rust::Str attr_name, uint32_t ui
     path = cpp_path.c_str();
 
     return ret;
+}
+
+bool SetProcessProfilesRustBridge(uint32_t uid, int32_t pid,
+                                  rust::Slice<const rust::Str> profiles) {
+    std::vector<std::string_view> cpp_profiles;
+
+    for (const auto& str : profiles) {
+        cpp_profiles.push_back(static_cast<std::string_view>(str));
+    }
+
+    return SetProcessProfiles(uid, pid, std::span{cpp_profiles});
 }
 
 bool SetTaskProfilesRustBridge(int32_t tid, rust::Slice<const rust::Str> profiles,

@@ -23,5 +23,6 @@
 
 bool CgroupGetAttributePathForProcessRustBridge(rust::Str attr_name, uint32_t uid, int32_t pid,
                                                 rust::String& path);
+bool SetProcessProfilesRustBridge(uid_t uid, pid_t pid, rust::Slice<const rust::Str> profiles);
 bool SetTaskProfilesRustBridge(int32_t tid, rust::Slice<const rust::Str> profiles,
                                bool use_fd_cache);
