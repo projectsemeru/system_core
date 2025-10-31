@@ -84,7 +84,7 @@ subsystem vfio
 
 # apexd creates DM for downloaded APEX files, which should be readable by
 # system_server (PackageManager).
-/dev/block/dm-*           0640   root       system
+/dev/block/mapper/*.apex  0644   root       system
 
 # sysfs properties
 /sys/devices/platform/trusty.*      trusty_version        0440  root   log
