@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <array>
 #include <set>
 #include <string>
 #include <vector>
@@ -36,6 +37,11 @@ Result<void> ParseRcScriptsFromAllApexes(bool is_default_mnt_ns);
 
 // Checks if apexd can mount apexes before data partition
 bool CanMountApexBeforeData();
+
+// The list of APEX built-in directories.
+// Keep the list in sync with kBuiltinApexPackageDirs in system/apex/apexd/apex_constants.h
+static constexpr std::array<const char*, 5> kBuiltinApexPackageDirs = {
+        "/system/apex", "/system_ext/apex", "/product/apex", "/vendor/apex", "/odm/apex"};
 
 }  // namespace init
 }  // namespace android
