@@ -79,6 +79,7 @@ struct healthd_config {
     android::String8 chargingStatePath;
     android::String8 chargingPolicyPath;
     android::String8 batterySerialPath;
+    android::String8 devstatusPath;
 
     int (*energyCounter)(int64_t *);
     int boot_min_cap;

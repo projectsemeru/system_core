@@ -31,6 +31,7 @@
 #include <sys/utsname.h>
 #include <unistd.h>
 
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -93,6 +94,7 @@
 #include "system/core/init/property_service.pb.h"
 #include "tradeinmode.h"
 #include "util.h"
+#include "ota_utils.h"
 
 #ifndef RECOVERY
 #include "com_android_apex.h"
@@ -133,6 +135,11 @@ struct PendingControlMessage {
 };
 [[clang::no_destroy]] static std::mutex pending_control_messages_lock;
 [[clang::no_destroy]] static std::queue<PendingControlMessage> pending_control_messages;
+
+[[clang::no_destroy]] static std::condition_variable udc_detection_cv;
+[[clang::no_destroy]] static std::mutex udc_controller_lock;
+static auto udc_controller_set = false;
+static auto udc_timeout = false;
 
 // Init epolls various FDs to wait for various inputs.  It previously waited on property changes
 // with a blocking socket that contained the information related to the change, however, it was easy
@@ -679,23 +686,50 @@ static Result<void> queue_property_triggers_action(const BuiltinArguments& args)
     return {};
 }
 
+// Needs to be called after PropertyInit() is called
+static BootMode GetBootMode() {
+    auto bootmode = GetProperty("ro.bootmode", GetProperty("ro.boot.mode", ""));
+    if (bootmode == "charger") {
+        return BootMode::CHARGER_MODE;
+    } else if (IsRecoveryMode() && GetIntProperty("ro.boot.force_normal_boot", 0) == 0) {
+        return BootMode::RECOVERY_MODE;
+    }
+
+    return BootMode::NORMAL_MODE;
+}
+
 // Set the UDC controller for the ConfigFS USB Gadgets.
 // Read the UDC controller in use from "/sys/class/udc".
 // In case of multiple UDC controllers select the first one.
-static void SetUsbController() {
-    static auto controller_set = false;
-    if (controller_set) return;
-    std::unique_ptr<DIR, decltype(&closedir)> dir(opendir("/sys/class/udc"), closedir);
-    if (!dir) return;
+static void SetUsbController(bool run_loop) {
+    if (udc_controller_set) return;
 
-    dirent* dp;
-    while ((dp = readdir(dir.get())) != nullptr) {
-        if (dp->d_name[0] == '.') continue;
+    do {
+        std::unique_ptr<DIR, decltype(&closedir)> dir(opendir("/sys/class/udc"), closedir);
+        if (!dir) return;
 
-        SetProperty("sys.usb.controller", dp->d_name);
-        controller_set = true;
-        break;
-    }
+        dirent* dp;
+        while ((dp = readdir(dir.get())) != nullptr) {
+            if (dp->d_name[0] == '.') continue;
+
+            SetProperty("sys.usb.controller", dp->d_name);
+            std::lock_guard<std::mutex> lock(udc_controller_lock);
+            udc_controller_set = true;
+
+            // Recovery and Charger mode always uses configfs=1.
+            if (GetBootMode() != BootMode::NORMAL_MODE) {
+                SetProperty("sys.usb.configfs", "1");
+            }
+            run_loop = false;
+            break;
+        }
+
+        if (run_loop && !udc_timeout) {
+            std::this_thread::sleep_for(100ms);
+        }
+    } while (!udc_timeout && run_loop);
+
+    udc_detection_cv.notify_one();
 }
 
 /// Set ro.kernel.version property to contain the major.minor pair as returned
@@ -868,6 +902,10 @@ static void MountExtraFilesystems() {
 }
 
 static void InitExtraDevices() {
+    // No extra devices for microdroid. We want it as slim as possible.
+    if (IsMicrodroid()) {
+        return;
+    }
     if constexpr (com::android::apex::flags::mount_before_data()) {
         // Pre-create a bunch of loop devices to accelerate apexd later. This effectively overrides
         // CONFIG_BLK_DEV_LOOP_MIN_COUNT. 128 loop devices should be enough for now because most
@@ -1052,7 +1090,7 @@ static void StartSecondStageBootMonitor(int timeout_sec) {
 }
 
 int SecondStageMain(int argc, char** argv) {
-    if (REBOOT_BOOTLOADER_ON_PANIC) {
+    if (REBOOT_BOOTLOADER_ON_PANIC && !AttemptingToBootNewSlot()) {
         InstallRebootSignalHandlers();
     }
 
@@ -1167,7 +1205,20 @@ int SecondStageMain(int argc, char** argv) {
     fs_mgr_vendor_overlay_mount_all();
     export_oem_lock_status();
     MountHandler mount_handler(&epoll);
-    SetUsbController();
+
+    BootMode bootmode = GetBootMode();
+
+    // Set the default value of sys.usb.configfs
+    SetProperty("sys.usb.configfs", "0");
+
+    std::unique_ptr<std::thread> usb_controller_thread;
+    bool wait_for_udc =
+            bootmode != BootMode::NORMAL_MODE && GetBoolProperty("ro.boot.wait_for_udc", false);
+    if (!wait_for_udc) {
+        SetUsbController(false);
+    } else {
+        usb_controller_thread = std::make_unique<std::thread>(&SetUsbController, true);
+    }
     SetKernelVersion();
 
     const BuiltinFunctionMap& function_map = GetBuiltinFunctionMap();
@@ -1237,9 +1288,21 @@ int SecondStageMain(int argc, char** argv) {
 
     // Copy logs captures from pstore. Flush the logs when boot completes
     am.QueueBuiltinAction(SetCopyRollbackLogsAction, "CopyRollbackLogs");
+
+    if (wait_for_udc) {
+        std::unique_lock<std::mutex> udc_lock(udc_controller_lock);
+        bool ret = udc_detection_cv.wait_for(udc_lock, std::chrono::seconds(10),
+                                             [] { return udc_controller_set; });
+        if (!ret) {
+            // Notify the SetUsbController thread to exit
+            udc_timeout = true;
+        }
+        udc_lock.unlock();
+        usb_controller_thread->join();
+    }
+
     // Don't mount filesystems or start core system services in charger mode.
-    std::string bootmode = GetProperty("ro.bootmode", "");
-    if (bootmode == "charger") {
+    if (bootmode == BootMode::CHARGER_MODE) {
         am.QueueEventTrigger("charger");
     } else {
         am.QueueEventTrigger("late-init");
@@ -1298,7 +1361,7 @@ int SecondStageMain(int argc, char** argv) {
         }
         if (!IsShuttingDown()) {
             HandleControlMessages();
-            SetUsbController();
+            SetUsbController(false);
         }
     }
 

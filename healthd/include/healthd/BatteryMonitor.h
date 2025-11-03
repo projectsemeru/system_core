@@ -98,6 +98,11 @@ class BatteryMonitor {
     int mBatteryFixedTemperature;
     int mBatteryHealthStatus;
     std::unique_ptr<aidl::android::hardware::health::HealthInfo> mHealthInfo;
+    android::String8 mDevPath;
+    std::optional<std::pair<std::chrono::time_point<std::chrono::steady_clock>, int32_t>>
+            mLastGoodBatteryLevel;
+
+    static constexpr std::chrono::seconds kMaximumLevelStaleness = std::chrono::seconds(70);
 };
 
 }; // namespace android

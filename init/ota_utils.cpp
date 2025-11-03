@@ -14,8 +14,21 @@
  * limitations under the License.
  */
 
-#pragma once
+#include "ota_utils.h"
 
-bool use_memfd();
-int __ashmem_create_region(const char* name, size_t size);
-int __memfd_create_region(const char* name, size_t size);
+#include <android-base/file.h>
+#include <android-base/logging.h>
+
+namespace android {
+namespace init {
+
+bool AttemptingToBootNewSlot() {
+    std::string content;
+    if (!android::base::ReadFileToString("/metadata/ota/state", &content)) {
+        return false;
+    }
+    return content == "Unverified";
+}
+
+}  // namespace init
+}  // namespace android

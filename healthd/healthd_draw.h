@@ -29,7 +29,8 @@ class HealthdDraw {
     virtual ~HealthdDraw();
 
     // Redraws screen.
-    void redraw_screen(const animation* batt_anim, GRSurface* surf_unknown);
+    void redraw_screen(const animation* batt_anim, GRSurface* surf_unknown,
+                       GRSurface* surf_overheat);
 
     // According to the index of Direct Rendering Manager,
     // Blanks screen if true, unblanks if false.
@@ -63,6 +64,8 @@ class HealthdDraw {
     virtual void draw_percent(const animation* anim);
     // Draws charger->surf_unknown or basic text.
     virtual void draw_unknown(GRSurface* surf_unknown);
+    // Draws charger->surf_overheat or basic text.
+    virtual void draw_overheat(GRSurface* surf_overheat);
 
     // Pixel sizes of characters for default font.
     int char_width_;

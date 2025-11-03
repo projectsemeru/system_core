@@ -83,6 +83,7 @@
 #include "second_stage_resources.h"
 #include "snapuserd_transition.h"
 #include "util.h"
+#include "ota_utils.h"
 
 using namespace std::string_literals;
 
@@ -781,7 +782,7 @@ int SetupSelinux(char** argv) {
     SetStdioToDevNull(argv);
     InitKernelLogging(argv);
 
-    if (REBOOT_BOOTLOADER_ON_PANIC) {
+    if (REBOOT_BOOTLOADER_ON_PANIC && !AttemptingToBootNewSlot()) {
         InstallRebootSignalHandlers();
     }
 
