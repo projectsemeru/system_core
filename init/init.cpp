@@ -139,7 +139,7 @@ struct PendingControlMessage {
 [[clang::no_destroy]] static std::condition_variable udc_detection_cv;
 [[clang::no_destroy]] static std::mutex udc_controller_lock;
 static auto udc_controller_set = false;
-static auto udc_timeout = false;
+static std::atomic<bool> udc_timeout = false;
 
 // Init epolls various FDs to wait for various inputs.  It previously waited on property changes
 // with a blocking socket that contained the information related to the change, however, it was easy
