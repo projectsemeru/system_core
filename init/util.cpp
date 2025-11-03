@@ -856,5 +856,19 @@ std::string SignalName(int signum) {
 #endif
 }
 
+int CountFilesIn(const char* path) {
+    std::unique_ptr<DIR, decltype(&closedir)> dir(opendir(path), closedir);
+    if (!dir) return 0;
+
+    int count = 0;
+    dirent* dp;
+    while ((dp = readdir(dir.get())) != nullptr) {
+        if (dp->d_type == DT_REG) {
+            count++;
+        }
+    }
+    return count;
+}
+
 }  // namespace init
 }  // namespace android
