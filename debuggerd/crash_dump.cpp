@@ -524,7 +524,7 @@ static void ReadGuestRegisters(std::unique_ptr<unwindstack::Regs>* regs, pid_t t
              sizeof(uint64_t) * (unwindstack::ARM64_REG_R30 + 1));
       arm64_user_regs.regs[unwindstack::ARM64_REG_SP] = guest_regs.regs_arm64.sp;
       arm64_user_regs.regs[unwindstack::ARM64_REG_PC] = guest_regs.regs_arm64.ip;
-      regs->reset(unwindstack::RegsArm64::Read(&arm64_user_regs));
+      regs->reset(unwindstack::RegsArm64::Read(&arm64_user_regs, tid));
 
       g_guest_arch = Architecture::ARM64;
       break;
