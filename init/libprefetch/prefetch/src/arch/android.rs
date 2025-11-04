@@ -26,6 +26,35 @@ fn wait_for_property_true(
     Ok(())
 }
 
+fn ensure_metadata_files(ready_path: &Path, fingerprint_path: &Path) -> Result<bool, Error> {
+    let mut metadata_files_exist = true;
+
+    // If metadata is wiped, need to create ready file and fingerprint file.
+    if !ready_path.exists() {
+        File::create(ready_path)
+            .map_err(|_| Error::Custom { error: "File Creation failed".to_string() })?;
+        metadata_files_exist = false;
+    }
+
+    if !fingerprint_path.exists() {
+        write_build_fingerprint(fingerprint_path)?;
+        metadata_files_exist = false;
+    }
+    Ok(metadata_files_exist)
+}
+
+fn is_saved_fingerprint_current(fingerprint_path: &Path) -> Result<bool, Error> {
+    // Read the fingerprint from the file, or return empty string if the file does not exist.
+    let saved_fingerprint = std::fs::read_to_string(fingerprint_path).unwrap_or_default();
+
+    let current_device_fingerprint =
+        rustutils::android::system_properties::read("ro.build.fingerprint").map_err(|e| {
+            Error::Custom { error: format!("Failed to read ro.build.fingerprint: {e}") }
+        })?;
+
+    Ok(current_device_fingerprint.is_some_and(|fp| fp == saved_fingerprint.trim()))
+}
+
 /// Wait for record to stop
 pub fn wait_for_record_stop() {
     wait_for_property_true(PREFETCH_RECORD_PROPERTY_STOP, None).unwrap_or_else(|e| {
@@ -74,21 +103,11 @@ pub fn can_perform_record(
         return Ok(false);
     }
 
-    if !ready_path.exists() {
-        File::create(ready_path)
-            .map_err(|_| Error::Custom { error: "File Creation failed".to_string() })?;
-
+    if !ensure_metadata_files(ready_path, fingerprint_path)? {
         return Ok(false);
     }
 
-    let saved_fingerprint = std::fs::read_to_string(fingerprint_path)?;
-
-    let current_device_fingerprint =
-        rustutils::android::system_properties::read("ro.build.fingerprint").map_err(|e| {
-            Error::Custom { error: format!("Failed to read ro.build.fingerprint: {e}") }
-        })?;
-
-    if current_device_fingerprint.is_some_and(|fp| fp == saved_fingerprint.trim()) {
+    if is_saved_fingerprint_current(fingerprint_path)? {
         // Not a new version and pack file already exists, do nothing.
         if pack_path.exists() {
             Ok(false)
