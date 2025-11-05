@@ -1186,15 +1186,17 @@ std::string_view CalculateBootCompletePrefix() {
 void RecordInitBootTimeProp(BootEventRecordStore* boot_event_store, const std::string& property) {
   auto value = android::base::GetProperty(property, "");
 
-  int64_t time_in_ms;
-  if (!android::base::ParseInt(value, &time_in_ms)) {
+  int64_t time;
+  if (!android::base::ParseInt(value, &time)) {
     return;
   }
 
-  // ro.boottime.init is recorded in ns, but we want to report it to
-  // statsd in ms.
+  int64_t time_in_ms;
   if (property == "ro.boottime.init") {
-    time_in_ms /= 1000000;
+    std::chrono::nanoseconds time_in_ns(time);
+    time_in_ms = std::chrono::duration_cast<std::chrono::milliseconds>(time_in_ns).count();
+  } else {
+    time_in_ms = time;
   }
 
   boot_event_store->AddBootEventWithValue(property, static_cast<int32_t>(time_in_ms));
