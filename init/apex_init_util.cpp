@@ -160,6 +160,11 @@ Result<void> ParseRcScriptsFromAllApexes(bool is_default_mnt_ns) {
 }
 
 bool CanMountApexBeforeData() {
+    // Can't mount APEXes before /data without FIEMAP support
+    if (!base::GetBoolProperty("apexd.config.use_fiemap", true)) {
+        return false;
+    }
+
     // For the first boot after factory reset: since there's no data apexes, init can decide by
     //     looking up "apexd.config.compressed_apex". If there's no compressed apexes, apexd should
     //     be able to mount apexes before data.
