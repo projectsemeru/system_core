@@ -78,6 +78,9 @@ on early-init
     # Run the init_dev_config service to configure the device.
     exec_start init_dev_config
 
+    # Fix permissions before apexd reads /metadata
+    restorecon /metadata
+
     # Run apexd-bootstrap so that APEXes that provide critical libraries
     # become available. Note that this is executed as exec_start to ensure that
     # the libraries are available to the processes started after this statement.
