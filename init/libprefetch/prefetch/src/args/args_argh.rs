@@ -202,9 +202,10 @@ impl RecordArgs {
 }
 
 /// Type of tracing subsystem to use.
-#[derive(Deserialize, Clone, Eq, PartialEq, Debug)]
+#[derive(Deserialize, Clone, Eq, PartialEq, Debug, Default)]
 pub enum TracerType {
     /// mem tracing subsystem relies on when a file's in-memory page gets added to the fs cache.
+    #[default]
     Mem,
 }
 
@@ -221,12 +222,6 @@ impl FromStr for TracerType {
                 })
             }
         })
-    }
-}
-
-impl Default for TracerType {
-    fn default() -> Self {
-        Self::Mem
     }
 }
 
@@ -276,8 +271,9 @@ pub struct DumpArgs {
     pub format: OutputFormat,
 }
 
-#[derive(Deserialize, Eq, PartialEq, Debug)]
+#[derive(Deserialize, Eq, PartialEq, Debug, Default)]
 pub enum OutputFormat {
+    #[default]
     Json,
     Csv,
 }
@@ -296,12 +292,6 @@ impl FromStr for OutputFormat {
                 })
             }
         })
-    }
-}
-
-impl Default for OutputFormat {
-    fn default() -> Self {
-        Self::Json
     }
 }
 
