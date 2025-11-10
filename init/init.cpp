@@ -139,7 +139,7 @@ struct PendingControlMessage {
 [[clang::no_destroy]] static std::condition_variable udc_detection_cv;
 [[clang::no_destroy]] static std::mutex udc_controller_lock;
 static auto udc_controller_set = false;
-static auto udc_timeout = false;
+static std::atomic<bool> udc_timeout = false;
 
 // Init epolls various FDs to wait for various inputs.  It previously waited on property changes
 // with a blocking socket that contained the information related to the change, however, it was easy
@@ -907,14 +907,16 @@ static void InitExtraDevices() {
         return;
     }
     if constexpr (com::android::apex::flags::mount_before_data()) {
-        // Pre-create a bunch of loop devices to accelerate apexd later. This effectively overrides
-        // CONFIG_BLK_DEV_LOOP_MIN_COUNT. 128 loop devices should be enough for now because most
-        // devices have < 100 apexes.
-        constexpr int kMaxLoopDevices = 128;
-        // Fire off a thread to pre-create the loop devices to avoid blocking the init.
+        // Pre-create of loop devices to accelerate apexd later. This effectively overrides
+        // CONFIG_BLK_DEV_LOOP_MIN_COUNT.
+        // Fire off a thread to pre-create the loop devices to avoid blocking init.
         std::thread([]() {
+            int count = 0;
+            for (const auto& apex_dir : kBuiltinApexPackageDirs) {
+                count += CountFilesIn(apex_dir);
+            }
             dm::LoopControl loop_control;
-            for (int i = 0; i < kMaxLoopDevices; i++) {
+            for (int i = 0; i < count; i++) {
                 (void)loop_control.Add(i);
             }
         }).detach();

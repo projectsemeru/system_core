@@ -148,7 +148,7 @@ class FastBootDriver : public IFastBootDriver {
     RetCode SendBuffer(const std::vector<char>& buf);
     RetCode SendBuffer(const void* buf, size_t size);
 
-    RetCode ReadBuffer(void* buf, size_t size);
+    RetCode ReadFully(void* buf, size_t size);
 
     RetCode UploadInner(const std::string& outfile, std::string* response = nullptr,
                         std::vector<std::string>* info = nullptr);

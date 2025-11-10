@@ -387,7 +387,7 @@ bool OpenSplitPolicy(PolicyFile* policy_file) {
     }
     compile_args.push_back(nullptr);
 
-    if (!ForkExecveAndWaitForCompletion(compile_args[0], (char**)compile_args.data())) {
+    if (ForkExecveAndWaitForCompletion(compile_args[0], (char**)compile_args.data()) != 0) {
         unlink(compiled_sepolicy);
         return false;
     }

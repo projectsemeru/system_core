@@ -78,6 +78,9 @@ on early-init
     # Run the init_dev_config service to configure the device.
     exec_start init_dev_config
 
+    # Fix permissions before apexd reads /metadata
+    restorecon /metadata
+
     # Run apexd-bootstrap so that APEXes that provide critical libraries
     # become available. Note that this is executed as exec_start to ensure that
     # the libraries are available to the processes started after this statement.
@@ -947,7 +950,9 @@ on post-fs-data
     # Set the casefold flag on /data/media.  For upgrades, a restorecon can be
     # needed first to relabel the directory from media_rw_data_file.
     restorecon /data/media
-    exec - media_rw media_rw -- /system/bin/chattr +F /data/media
+    start casefolding_remover
+    wait_for_prop ro.casefolding.adjusted 1
+
 
     # A tmpfs directory, which will contain all apps and sdk sandbox CE and DE
     # data directory that bind mount from the original source.

@@ -322,7 +322,7 @@ RetCode FastBootDriver::RunAndReadBuffer(
     while (current_offset < total_size) {
         uint64_t remaining = total_size - current_offset;
         uint64_t chunk_size = std::min(buf_size, remaining);
-        if ((ret = ReadBuffer(data.data(), chunk_size)) != SUCCESS) {
+        if ((ret = ReadFully(data.data(), chunk_size)) != SUCCESS) {
             return ret;
         }
         if ((ret = write_fn(data.data(), chunk_size)) != SUCCESS) {
@@ -571,16 +571,19 @@ RetCode FastBootDriver::SendBuffer(const void* buf, size_t size) {
     return SUCCESS;
 }
 
-RetCode FastBootDriver::ReadBuffer(void* buf, size_t size) {
-    // Read the buffer
-    ssize_t tmp = transport_->Read(buf, size);
-
-    if (tmp < 0) {
-        error_ = ErrnoStr("Read from device failed in ReadBuffer()");
-        return IO_ERROR;
-    } else if (static_cast<size_t>(tmp) != size) {
-        error_ = android::base::StringPrintf("Failed to read all %zu bytes", size);
-        return IO_ERROR;
+RetCode FastBootDriver::ReadFully(void* buf, size_t size) {
+    size_t left = size;
+    while (left > 0) {
+        ssize_t n = transport_->Read(buf, left);
+        if (n < 0) {
+            error_ = ErrnoStr("Read from device failed in ReadFully()");
+            return IO_ERROR;
+        } else if (n == 0) {
+            error_ = android::base::StringPrintf("Failed to read all %zu bytes", size);
+            return IO_ERROR;
+        }
+        left -= n;
+        buf = static_cast<uint8_t*>(buf) + n;
     }
 
     return SUCCESS;
