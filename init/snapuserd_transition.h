@@ -80,10 +80,6 @@ std::optional<pid_t> GetSnapuserdFirstStagePid();
 // Return snapuserd info strings that were set during first-stage init.
 std::vector<std::string> GetSnapuserdFirstStageInfo();
 
-// Save an open fd to /system/bin (in the ramdisk) into an environment. This is
-// used to later execveat() snapuserd.
-void SaveRamdiskPathToSnapuserd();
-
 // Returns true if first-stage snapuserd is running.
 bool IsFirstStageSnapuserdRunning();
 

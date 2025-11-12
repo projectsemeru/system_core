@@ -39,14 +39,11 @@
 #include <fs_avb/fs_avb.h>
 #include <fs_mgr.h>
 #include <fs_mgr_dm_linear.h>
-#include <libgsi/libgsi.h>
 #include <liblp/liblp.h>
-#include <libsnapshot/snapshot.h>
 
 #include "block_dev_initializer.h"
 #include "devices.h"
 #include "result.h"
-#include "snapuserd_transition.h"
 #include "switch_root.h"
 #include "uevent.h"
 #include "uevent_listener.h"
@@ -74,47 +71,6 @@ namespace init {
 
 // Static Functions
 // ----------------
-static inline bool IsDtVbmetaCompatible(const Fstab& fstab) {
-    if (std::any_of(fstab.begin(), fstab.end(),
-                    [](const auto& entry) { return entry.fs_mgr_flags.avb; })) {
-        return true;
-    }
-    return is_android_dt_value_expected("vbmeta/compatible", "android,vbmeta");
-}
-
-static Result<Fstab> ReadFirstStageFstabAndroid() {
-    Fstab fstab;
-    if (!ReadFstabFromDt(&fstab)) {
-        if (ReadDefaultFstab(&fstab)) {
-            fstab.erase(std::remove_if(fstab.begin(), fstab.end(),
-                                       [](const auto& entry) {
-                                           return !entry.fs_mgr_flags.first_stage_mount;
-                                       }),
-                        fstab.end());
-        } else {
-            return Error() << "failed to read default fstab for first stage mount";
-        }
-    }
-    return fstab;
-}
-
-// Note: this is a temporary solution to avoid blocking devs that depend on /vendor partition in
-// Microdroid. For the proper solution the /vendor fstab should probably be defined in the DT.
-// TODO(b/285855430): refactor this
-// TODO(b/285855436): verify key microdroid-vendor was signed with.
-// TODO(b/285855436): should be mounted on top of dm-verity device.
-static Result<Fstab> ReadFirstStageFstabMicrodroid(const std::string& cmdline) {
-    Fstab fstab;
-    if (!ReadDefaultFstab(&fstab)) {
-        return Error() << "failed to read fstab";
-    }
-    if (cmdline.find("androidboot.microdroid.mount_vendor=1") == std::string::npos) {
-        // We weren't asked to mount /vendor partition, filter it out from the fstab.
-        auto predicate = [](const auto& entry) { return entry.mount_point == "/vendor"; };
-        fstab.erase(std::remove_if(fstab.begin(), fstab.end(), predicate), fstab.end());
-    }
-    return fstab;
-}
 
 static bool IsStandaloneImageRollback(const AvbHandle& builtin_vbmeta,
                                       const AvbHandle& standalone_vbmeta,
@@ -139,40 +95,8 @@ static bool IsStandaloneImageRollback(const AvbHandle& builtin_vbmeta,
     return rollbacked;
 }
 
-Result<std::unique_ptr<FirstStageMount>> FirstStageMount::Create(const std::string& cmdline) {
-    Result<Fstab> fstab;
-    if (IsMicrodroid()) {
-        fstab = ReadFirstStageFstabMicrodroid(cmdline);
-    } else {
-        fstab = ReadFirstStageFstabAndroid();
-    }
-    if (!fstab.ok()) {
-        return fstab.error();
-    }
-
-    return std::make_unique<FirstStageMount>(std::move(*fstab));
-}
-
 bool FirstStageMount::DoCreateDevices() {
-    if (!InitDevices()) return false;
-
-    // Mount /metadata before creating logical partitions, since we need to
-    // know whether a snapshot merge is in progress.
-    auto metadata_partition = std::find_if(fstab_.begin(), fstab_.end(), [](const auto& entry) {
-        return entry.mount_point == "/metadata";
-    });
-    if (metadata_partition != fstab_.end()) {
-        if (MountPartition(metadata_partition, true /* erase_same_mounts */)) {
-            // Copies DSU AVB keys from the ramdisk to /metadata.
-            // Must be done before the following TrySwitchSystemAsRoot().
-            // Otherwise, ramdisk will be inaccessible after switching root.
-            CopyDsuAvbKeys();
-        }
-    }
-
-    if (!CreateLogicalPartitions()) return false;
-
-    return true;
+    return InitDevices();
 }
 
 bool FirstStageMount::DoFirstStageMount() {
@@ -362,15 +286,13 @@ bool FirstStageMount::TrySwitchSystemAsRoot() {
 
     if (system_partition == fstab_.end()) return true;
 
-    if (use_snapuserd_) {
-        SaveRamdiskPathToSnapuserd();
-    }
+    SaveRamdiskPathToSnapuserd();
 
     if (!MountPartition(system_partition, false /* erase_same_mounts */)) {
         PLOG(ERROR) << "Failed to mount /system";
         return false;
     }
-    if (dsu_not_on_userdata_ && fs_mgr_verity_is_check_at_most_once(*system_partition)) {
+    if (!AllowVerityCheckAtMostOnce() && fs_mgr_verity_is_check_at_most_once(*system_partition)) {
         LOG(ERROR) << "check_at_most_once forbidden on external media";
         return false;
     }
@@ -464,27 +386,6 @@ bool FirstStageMount::MountPartitions() {
     MountOverlays();
 
     return true;
-}
-
-// Preserves /avb/*.avbpubkey to /metadata/gsi/dsu/avb/, so they can be used for
-// key revocation check by DSU installation service.  Note that failing to
-// copy files to /metadata is NOT fatal, because it is auxiliary to perform
-// public key matching before booting into DSU images on next boot. The actual
-// public key matching will still be done on next boot to DSU.
-void FirstStageMount::CopyDsuAvbKeys() {
-    std::error_code ec;
-    // Removing existing keys in gsi::kDsuAvbKeyDir as they might be stale.
-    std::filesystem::remove_all(gsi::kDsuAvbKeyDir, ec);
-    if (ec) {
-        LOG(ERROR) << "Failed to remove directory " << gsi::kDsuAvbKeyDir << ": " << ec.message();
-    }
-    // Copy keys from the ramdisk /avb/* to gsi::kDsuAvbKeyDir.
-    static constexpr char kRamdiskAvbKeyDir[] = "/avb";
-    std::filesystem::copy(kRamdiskAvbKeyDir, gsi::kDsuAvbKeyDir, ec);
-    if (ec) {
-        LOG(ERROR) << "Failed to copy " << kRamdiskAvbKeyDir << " into " << gsi::kDsuAvbKeyDir
-                   << ": " << ec.message();
-    }
 }
 
 FirstStageMount::FirstStageMount(Fstab fstab)
@@ -642,42 +543,6 @@ bool FirstStageMount::InitAvbHandle() {
     // Sets INIT_AVB_VERSION here for init to set ro.boot.avb_version in the second stage.
     setenv("INIT_AVB_VERSION", avb_handle_->avb_version().c_str(), 1);
     return true;
-}
-
-void SetInitAvbVersionInRecovery() {
-    if (!IsRecoveryMode()) {
-        LOG(INFO) << "Skipped setting INIT_AVB_VERSION (not in recovery mode)";
-        return;
-    }
-
-    auto fstab = ReadFirstStageFstabAndroid();
-    if (!fstab.ok()) {
-        LOG(ERROR) << fstab.error();
-        return;
-    }
-
-    if (!IsDtVbmetaCompatible(*fstab)) {
-        LOG(INFO) << "Skipped setting INIT_AVB_VERSION (not vbmeta compatible)";
-        return;
-    }
-
-    // Initializes required devices for the subsequent AvbHandle::Open()
-    // to verify AVB metadata on all partitions in the verified chain.
-    // We only set INIT_AVB_VERSION when the AVB verification succeeds, i.e., the
-    // Open() function returns a valid handle.
-    // We don't need to mount partitions here in recovery mode.
-    FirstStageMount avb_first_mount(std::move(*fstab));
-    if (!avb_first_mount.InitDevices()) {
-        LOG(ERROR) << "Failed to init devices for INIT_AVB_VERSION";
-        return;
-    }
-
-    AvbUniquePtr avb_handle = AvbHandle::Open();
-    if (!avb_handle) {
-        PLOG(ERROR) << "Failed to open AvbHandle for INIT_AVB_VERSION";
-        return;
-    }
-    setenv("INIT_AVB_VERSION", avb_handle->avb_version().c_str(), 1);
 }
 
 }  // namespace init

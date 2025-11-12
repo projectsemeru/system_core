@@ -49,7 +49,9 @@
 #include "ota_utils.h"
 #include "reboot_utils.h"
 #include "second_stage_resources.h"
+#ifndef MICRODROID
 #include "snapuserd_transition.h"
+#endif
 #include "switch_root.h"
 #include "util.h"
 
@@ -99,11 +101,13 @@ void FreeRamdisk(DIR* dir, dev_t dev) {
                 }
             }
         } else if (de->d_type == DT_REG) {
+#ifndef MICRODROID
             // Do not free snapuserd if we will need the ramdisk copy during the
             // selinux transition.
             if (de->d_name == "snapuserd"s && IsFirstStageSnapuserdRunning()) {
                 continue;
             }
+#endif
         }
         unlinkat(dfd, de->d_name, is_dir ? AT_REMOVEDIR : 0);
     }
