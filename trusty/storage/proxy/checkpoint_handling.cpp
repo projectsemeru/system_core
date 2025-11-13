@@ -41,6 +41,8 @@ using ::ndk::SharedRefBase;
 
 const char kVoldService[] = "android.system.vold.IVold/default";
 
+bool checkpointingDoneForever = false;
+
 /* Written once from main thread before any checkpointing_get_state
  * calls could be reading it. */
 bool voldConnected = false;
@@ -55,10 +57,16 @@ class VoldListener : public BnVoldCheckpointListener {
     }
 };
 
-int is_data_checkpoint_active_legacy(bool* active) {
+}  // namespace
+
+int is_data_checkpoint_active(bool* active) {
+    if (!active) {
+        ALOGE("active out parameter is null");
+        return 0;
+    }
+
     *active = false;
 
-    static bool checkpointingDoneForever = false;
     if (checkpointingDoneForever) {
         return 0;
     }
@@ -101,38 +109,6 @@ int is_data_checkpoint_active_legacy(bool* active) {
         *active = true;
     }
 
-    return 0;
-}
-
-}  // namespace
-
-int is_data_checkpoint_active(bool* active) {
-    if (!active) {
-        ALOGE("active out parameter is null");
-        return 0;
-    }
-
-    if (!voldConnected) {
-        return is_data_checkpoint_active_legacy(active);
-    }
-
-    bool legacy;
-    int rc = is_data_checkpoint_active_legacy(&legacy);
-
-    bool vold = voldPossibleCheckpointing.load();
-    if (rc == 0) {
-        if (!vold && legacy) {
-            ALOGE("Vold reports checkpointing done but Fstab says it's ongoing. Using Fstab "
-                  "state.\n");
-            *active = legacy;
-            return 0;
-        }
-        if (vold && !legacy) {
-            ALOGI("Vold reports possible checkpointing done but Fstab says it's done.\n");
-        }
-    }
-
-    *active = vold;
     return 0;
 }
 
