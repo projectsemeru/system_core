@@ -1,0 +1,20 @@
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+rust_binary {
+    name: "keymint_provisioning_tool",
+    crate_name: "keymint_provisioning_tool",
+    srcs: ["src/main.rs"],
+    prefer_rlib: true,
+    rustlibs: [
+        "android.trusty.provisioning-rust",
+        "libandroid_logger",
+        "libanyhow",
+        "libbinder_rs",
+        "libclap",
+        "liblog_rust",
+        "librustutils",
+    ],
+    system_ext_specific: true,
+}
