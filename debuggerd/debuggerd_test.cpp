@@ -3458,6 +3458,7 @@ TEST_F(CrasherTest, buffer_overflow_detection_read) {
     size_t alloc_size = __builtin_align_up(1'000'000, getpagesize());
     uint8_t* pointer = reinterpret_cast<uint8_t*>(malloc(alloc_size));
     ASSERT_TRUE(pointer != nullptr);
+    android::base::DoNotOptimize(pointer);
     // Write past the end of the allocation
     for (size_t i = alloc_size; i < alloc_size + 10'000; i++) {
       uint8_t value;
@@ -3502,6 +3503,7 @@ TEST_F(CrasherTest, buffer_underflow_detection_read) {
     size_t alloc_size = __builtin_align_up(1'000'000, getpagesize());
     uint8_t* pointer = reinterpret_cast<uint8_t*>(malloc(alloc_size));
     ASSERT_TRUE(pointer != nullptr);
+    android::base::DoNotOptimize(pointer);
     // Write before the end of the allocation
     for (size_t i = 0; i < 10'000; i++) {
       uint8_t value;
