@@ -3925,9 +3925,6 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
         return Return::Error();
     }
 
-    // TODO(b/134949511): remove this check. Right now, with overlayfs mounted, the scratch
-    // partition takes up a big chunk of space in super, causing COW images to be created on
-    // retrofit Virtual A/B devices.
     if (device_->IsOverlayfsSetup()) {
         LOG(ERROR) << "Cannot create update snapshots with overlayfs setup. Run `adb enable-verity`"
                    << ", reboot, then try again.";
