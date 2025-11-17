@@ -22,6 +22,9 @@ namespace snapshot {
 // Returns true if we should be using UBLK
 bool IsUblkEnabled();
 
+// Returns true if read batching is enabled for snapuserd
+bool IsSnapuserdReadBatchingEnabled();
+
 constexpr const char* kSnapuserdModeHintFile = "/metadata/ota/snapuserd_mode";
 constexpr const char* kSnapuserdModeUblk = "ublk";
 constexpr const char* kSnapuserdModeDmUser = "dm-user";

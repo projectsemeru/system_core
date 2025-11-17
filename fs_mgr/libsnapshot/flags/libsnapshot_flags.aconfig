@@ -9,3 +9,12 @@ flag {
   bug: "362683283"
   is_fixed_read_only: true
 }
+
+flag {
+  name: "snapuserd_read_batching"
+  is_exported: false
+  namespace: "android_kernel"
+  description: "Enable read batching feature for snapuserd"
+  bug: "364476528"
+  is_fixed_read_only: true
+}
