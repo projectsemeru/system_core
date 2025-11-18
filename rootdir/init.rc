@@ -909,6 +909,7 @@ on post-fs-data
     mkdir /data/ss 0700 system system encryption=Require
 
     mkdir /data/system 0775 system system encryption=Require
+    mkdir /data/system/aiseal 0700 system system
     mkdir /data/system/environ 0700 system system
     # b/183861600 attempt to fix selinux label before running derive_classpath service
     restorecon /data/system/environ
