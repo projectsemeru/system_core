@@ -75,9 +75,9 @@
 #include "system/core/init/property_service.pb.h"
 #include "util.h"
 
-static constexpr char APPCOMPAT_OVERRIDE_PROP_FOLDERNAME[] =
+[[maybe_unused]] static constexpr char APPCOMPAT_OVERRIDE_PROP_FOLDERNAME[] =
         "/dev/__properties__/appcompat_override";
-static constexpr char APPCOMPAT_OVERRIDE_PROP_TREE_FILE[] =
+[[maybe_unused]] static constexpr char APPCOMPAT_OVERRIDE_PROP_TREE_FILE[] =
         "/dev/__properties__/appcompat_override/property_info";
 using namespace std::literals;
 
