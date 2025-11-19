@@ -997,7 +997,8 @@ static bool should_use_metadata_encryption(const FstabEntry& entry) {
 // attempted_idx: On return, will indicate which fstab entry
 //     succeeded. In case of failure, it will be the start_idx.
 // Sets errno to match the 1st mount failure on failure.
-static bool mount_with_alternatives(Fstab& fstab, int start_idx, int* end_idx, int* attempted_idx) {
+static bool mount_with_alternatives(Fstab& fstab, int start_idx, bool interrupted, int* end_idx,
+                                    int* attempted_idx) {
     unsigned long i;
     int mount_errno = 0;
     bool mounted = false;
@@ -1013,6 +1014,13 @@ static bool mount_with_alternatives(Fstab& fstab, int start_idx, int* end_idx, i
             LINFO << __FUNCTION__ << "(): skipping fstab dup mountpoint=" << fstab[i].mount_point
                   << " rec[" << i << "].fs_type=" << fstab[i].fs_type << " already mounted as "
                   << fstab[*attempted_idx].fs_type;
+            continue;
+        }
+
+        if (interrupted) {
+            LINFO << __FUNCTION__ << "(): skipping fstab mountpoint=" << fstab[i].mount_point
+                  << " rec[" << i << "].fs_type=" << fstab[i].fs_type
+                  << " (previously interrupted during encryption step)";
             continue;
         }
 
@@ -1483,6 +1491,15 @@ static bool IsMountPointMounted(const std::string& mount_point) {
     return GetEntryForMountPoint(&fstab, mount_point) != nullptr;
 }
 
+std::string fs_mgr_metadata_encryption_in_progress_file_name(const FstabEntry& entry) {
+    return entry.metadata_key_dir + "/in_progress";
+}
+
+bool WasMetadataEncryptionInterrupted(const FstabEntry& entry) {
+    if (!should_use_metadata_encryption(entry)) return false;
+    return access(fs_mgr_metadata_encryption_in_progress_file_name(entry).c_str(), R_OK) == 0;
+}
+
 static FstabEntry* LocateFormattableEntry(FstabEntry* const begin, FstabEntry* const end) {
     if (begin == end) {
         return nullptr;
@@ -1522,6 +1539,7 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
     int error_count = 0;
     CheckpointManager checkpoint_manager;
     AvbUniquePtr avb_handle(nullptr);
+    bool wiped = false;
     bool userdata_mounted = false;
 
     if (fstab->empty()) {
@@ -1627,13 +1645,14 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
         const int top_idx = i;
         int attempted_idx = -1;
 
-        bool mret = mount_with_alternatives(*fstab, i, &last_idx_inspected, &attempted_idx);
+        bool encryption_interrupted = WasMetadataEncryptionInterrupted(current_entry);
+        bool mret = mount_with_alternatives(*fstab, i, encryption_interrupted, &last_idx_inspected,
+                                            &attempted_idx);
         auto& attempted_entry = (*fstab)[attempted_idx];
         i = last_idx_inspected;
         int mount_errno = errno;
 
         // Handle success and deal with encryptability.
-        bool wiped = false;
         if (mret) {
             int status = handle_encryptable(attempted_entry);
 
@@ -1649,26 +1668,37 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
                 }
                 encryptable = status;
                 if (status == FS_MGR_MNTALL_DEV_NEEDS_METADATA_ENCRYPTION) {
-                    // We no longer support encrypt in place
-                    // If we managed to mount a volume that should be encrypted
-                    // we need to wipe it.
-                    mret = false;
-                    mount_errno = EINVAL;
-                    wiped = true;
+                    fs_mgr_set_blk_ro(attempted_entry.blk_device, false);
+                    if (!call_vdc({"cryptfs", "encryptFstab", attempted_entry.blk_device,
+                                   attempted_entry.mount_point, wiped ? "true" : "false",
+                                   attempted_entry.fs_type,
+                                   attempted_entry.fs_mgr_flags.is_zoned ? "true" : "false",
+                                   std::to_string(attempted_entry.length),
+                                   android::base::Join(attempted_entry.user_devices, ' '),
+                                   android::base::Join(attempted_entry.device_aliased, ' ')},
+                                  nullptr)) {
+                        LERROR << "Encryption failed";
+                        set_type_property(encryptable);
+                        return FS_MGR_MNTALL_FAIL;
+                    }
                 }
+            }
+
+            if (current_entry.mount_point == "/data") {
+                userdata_mounted = true;
             }
 
             MountOverlayfs(attempted_entry, &scratch_can_be_mounted);
 
             // Success!  Go get the next one.
-            if (mret) continue;
+            continue;
         }
         auto formattable_entry =
                 LocateFormattableEntry(fstab->data() + top_idx, fstab->data() + fstab->size());
         // Mounting failed, understand why and retry.
-        wiped = wiped || partition_wiped(current_entry.blk_device.c_str());
+        wiped = partition_wiped(current_entry.blk_device.c_str());
         if (mount_errno != EBUSY && mount_errno != EACCES &&
-            current_entry.fs_mgr_flags.formattable && wiped) {
+            current_entry.fs_mgr_flags.formattable && (wiped || encryption_interrupted)) {
             // current_entry and attempted_entry point at the same partition, but sometimes
             // at two different lines in the fstab.  Use current_entry for formatting
             // as that is the preferred one.
@@ -1676,6 +1706,10 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
                 LERROR << __FUNCTION__ << "(): " << realpath(current_entry.blk_device)
                        << " is wiped and " << current_entry.mount_point << " "
                        << current_entry.fs_type << " is formattable. Format it.";
+            if (encryption_interrupted)
+                LERROR << __FUNCTION__ << "(): " << realpath(current_entry.blk_device)
+                       << " was interrupted during encryption and " << current_entry.mount_point
+                       << " " << current_entry.fs_type << " is formattable. Format it.";
 
             checkpoint_manager.Revert(&current_entry);
 
@@ -1716,7 +1750,7 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
         }
 
         // mount(2) returned an error, handle the encryptable/formattable case.
-        if (mount_errno != EBUSY && mount_errno != EACCES &&
+        if (mount_errno != EBUSY && mount_errno != EACCES && !encryption_interrupted &&
             should_use_metadata_encryption(attempted_entry)) {
             if (!call_vdc({"cryptfs", "mountFstab", attempted_entry.blk_device,
                            attempted_entry.mount_point,
@@ -1734,13 +1768,13 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
             // Use StringPrintf to output "(null)" instead.
             if (attempted_entry.fs_mgr_flags.no_fail) {
                 PERROR << android::base::StringPrintf(
-                        "Ignoring failure to mount an un-encryptable, or wiped "
+                        "Ignoring failure to mount an un-encryptable, interrupted, or wiped "
                         "partition on %s at %s options: %s",
                         attempted_entry.blk_device.c_str(), attempted_entry.mount_point.c_str(),
                         attempted_entry.fs_options.c_str());
             } else {
                 PERROR << android::base::StringPrintf(
-                        "Failed to mount an un-encryptable, or wiped partition "
+                        "Failed to mount an un-encryptable, interrupted, or wiped partition "
                         "on %s at %s options: %s",
                         attempted_entry.blk_device.c_str(), attempted_entry.mount_point.c_str(),
                         attempted_entry.fs_options.c_str());
