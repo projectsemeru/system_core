@@ -286,6 +286,9 @@ message SnapshotMergeReport {
 
     // Size of v3 operation buffer. Needs to be determined during writer initialization
     uint64 estimated_op_count_max = 14;
+
+    // Whether this OTA update used ublk.
+    bool ublk_used = 15;
 }
 
 message VerityHash {
