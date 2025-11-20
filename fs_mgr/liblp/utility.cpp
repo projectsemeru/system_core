@@ -26,7 +26,6 @@
 #endif
 
 #include <algorithm>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -73,14 +72,6 @@ int64_t SeekFile64(int fd, int64_t offset, int whence) {
     return lseek(fd, offset, whence);
 }
 
-int64_t GetPrimaryGeometryOffset() {
-    return LP_PARTITION_RESERVED_BYTES;
-}
-
-int64_t GetBackupGeometryOffset() {
-    return GetPrimaryGeometryOffset() + LP_METADATA_GEOMETRY_SIZE;
-}
-
 int64_t GetPrimaryMetadataOffset(const LpMetadataGeometry& geometry, uint32_t slot_number) {
     CHECK(slot_number < geometry.metadata_slot_count);
     int64_t offset = LP_PARTITION_RESERVED_BYTES + (LP_METADATA_GEOMETRY_SIZE * 2) +
@@ -93,11 +84,6 @@ int64_t GetBackupMetadataOffset(const LpMetadataGeometry& geometry, uint32_t slo
     int64_t start = LP_PARTITION_RESERVED_BYTES + (LP_METADATA_GEOMETRY_SIZE * 2) +
                     int64_t(geometry.metadata_max_size) * geometry.metadata_slot_count;
     return start + int64_t(geometry.metadata_max_size * slot_number);
-}
-
-uint64_t GetTotalMetadataSize(uint32_t metadata_max_size, uint32_t max_slots) {
-    return LP_PARTITION_RESERVED_BYTES +
-           (LP_METADATA_GEOMETRY_SIZE + metadata_max_size * max_slots) * 2;
 }
 
 const LpMetadataBlockDevice* GetMetadataSuperBlockDevice(const LpMetadata& metadata) {

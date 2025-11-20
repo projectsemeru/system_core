@@ -86,6 +86,11 @@ bool WriteToImageFile(const std::string& file, const LpMetadata& metadata, uint3
 bool WriteToImageFile(const std::string& file, const LpMetadata& metadata);
 bool WriteToImageFile(android::base::borrowed_fd fd, const LpMetadata& metadata);
 std::unique_ptr<LpMetadata> ReadFromImageFile(const std::string& image_file);
+// ReadFromImageBlob and ReadFromImageFile follow different formats.
+// ReadFromImageFile follows same format as /dev/block/by-name/super,
+// which contains reserved bytes and backup sections.
+// ReadFromImageBlob follows the format of super_empty.img, which contains
+// only metadata without reserved bytes and backup sections.
 std::unique_ptr<LpMetadata> ReadFromImageBlob(const void* data, size_t bytes);
 
 // Similar to WriteToSparseFile, this will generate an image that can be
@@ -120,6 +125,33 @@ std::string GetPartitionSlotSuffix(const std::string& partition_name);
 // Helpers for common functions.
 const LpMetadataPartition* FindPartition(const LpMetadata& metadata, const std::string& name);
 uint64_t GetPartitionSize(const LpMetadata& metadata, const LpMetadataPartition& partition);
+
+// Parse a super partition image from bytes. Follow the same format as
+// /dev/block/by-name/super , with reserved bytes and backup sections.
+std::unique_ptr<LpMetadata> ParseSuperPartition(const void* buffer, size_t size,
+                                                uint32_t slot_number);
+
+constexpr int64_t GetPrimaryGeometryOffset() {
+    return LP_PARTITION_RESERVED_BYTES;
+}
+
+constexpr int64_t GetBackupGeometryOffset() {
+    return GetPrimaryGeometryOffset() + LP_METADATA_GEOMETRY_SIZE;
+}
+
+int64_t GetPrimaryMetadataOffset(const LpMetadataGeometry& geometry, uint32_t slot_number);
+
+int64_t GetBackupMetadataOffset(const LpMetadataGeometry& geometry, uint32_t slot_number);
+
+std::string ValidateAndSerializeMetadata(const LpMetadata& metadata);
+std::string SerializeGeometry(const LpMetadataGeometry& input);
+
+// Return the total space at the start of the super partition that must be set
+// aside from headers/metadata and backups.
+constexpr uint64_t GetTotalMetadataSize(uint32_t metadata_max_size, uint32_t max_slots) {
+    return LP_PARTITION_RESERVED_BYTES +
+           (LP_METADATA_GEOMETRY_SIZE + metadata_max_size * max_slots) * 2;
+}
 
 }  // namespace fs_mgr
 }  // namespace android
