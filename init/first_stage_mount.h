@@ -18,24 +18,72 @@
 
 #include <memory>
 
+#include <fs_avb/fs_avb.h>
+#include <fstab/fstab.h>
+#include <libsnapshot/snapshot.h>
+#include "block_dev_initializer.h"
 #include "result.h"
 
 namespace android {
 namespace init {
 
 class FirstStageMount {
+    using AvbUniquePtr = android::fs_mgr::AvbUniquePtr;
+    using Fstab = android::fs_mgr::Fstab;
+    using FstabEntry = android::fs_mgr::FstabEntry;
+    using SnapshotManager = android::snapshot::SnapshotManager;
+
   public:
+    friend void SetInitAvbVersionInRecovery();
+
+    FirstStageMount(Fstab fstab);
     virtual ~FirstStageMount() = default;
 
     // The factory method to create a FirstStageMount instance.
     static Result<std::unique_ptr<FirstStageMount>> Create(const std::string& cmdline);
-    // Creates devices and logical partitions from storage devices
-    virtual bool DoCreateDevices() = 0;
-    // Mounts fstab entries read from device tree.
-    virtual bool DoFirstStageMount() = 0;
 
-  protected:
-    FirstStageMount() = default;
+    bool DoCreateDevices();
+    bool DoFirstStageMount();
+
+  private:
+    bool InitDevices();
+    bool InitRequiredDevices(std::set<std::string> devices);
+    bool CreateLogicalPartitions();
+    bool CreateSnapshotPartitions(SnapshotManager* sm);
+    bool MountPartition(const Fstab::iterator& begin, bool erase_same_mounts,
+                        Fstab::iterator* end = nullptr);
+
+    bool MountPartitions();
+    bool TrySwitchSystemAsRoot();
+    bool IsDmLinearEnabled();
+    void GetSuperDeviceName(std::set<std::string>* devices);
+    bool InitDmLinearBackingDevices(const android::fs_mgr::LpMetadata& metadata);
+    void UseDsuIfPresent();
+    // Reads all fstab.avb_keys from the ramdisk for first-stage mount.
+    void PreloadAvbKeys();
+    // Copies /avb/*.avbpubkey used for DSU from the ramdisk to /metadata for key
+    // revocation check by DSU installation service.
+    void CopyDsuAvbKeys();
+
+    bool GetDmVerityDevices(std::set<std::string>* devices);
+    bool SetUpDmVerity(FstabEntry* fstab_entry);
+
+    bool InitAvbHandle();
+
+    bool dsu_not_on_userdata_ = false;
+    bool use_snapuserd_ = false;
+
+    Fstab fstab_;
+    // The super path is only set after InitDevices, and is invalid before.
+    std::string super_path_;
+    std::string super_partition_name_;
+    BlockDevInitializer block_dev_init_;
+    // Reads all AVB keys before chroot into /system, as they might be used
+    // later when mounting other partitions, e.g., /vendor and /product.
+    std::map<std::string, std::vector<std::string>> preload_avb_key_blobs_;
+
+    std::vector<std::string> vbmeta_partitions_;
+    AvbUniquePtr avb_handle_;
 };
 
 void SetInitAvbVersionInRecovery();
