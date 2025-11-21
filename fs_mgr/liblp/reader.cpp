@@ -21,11 +21,11 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <functional>
-
 #include <android-base/file.h>
 #include <android-base/unique_fd.h>
 
+#include "liblp/liblp.h"
+#include "liblp/metadata_format.h"
 #include "utility.h"
 
 namespace android {
@@ -37,7 +37,7 @@ static_assert(sizeof(LpMetadataHeaderV1_0) == offsetof(LpMetadataHeader, flags),
 // Helper class for reading descriptors and memory buffers in the same manner.
 class Reader {
   public:
-    virtual ~Reader(){};
+    virtual ~Reader() {};
     virtual bool ReadFully(void* buffer, size_t length) = 0;
 };
 
@@ -90,10 +90,10 @@ bool ParseGeometry(const void* buffer, LpMetadataGeometry* geometry) {
     }
     // Recompute and check the CRC32.
     {
-        LpMetadataGeometry temp = *geometry;
-        memset(&temp.checksum, 0, sizeof(temp.checksum));
-        SHA256(&temp, temp.struct_size, temp.checksum);
-        if (memcmp(temp.checksum, geometry->checksum, sizeof(temp.checksum)) != 0) {
+        auto actual_sha = reinterpret_cast<const LpMetadataGeometry*>(buffer)->checksum;
+        memset(&geometry->checksum, 0, sizeof(geometry->checksum));
+        SHA256(geometry, geometry->struct_size, geometry->checksum);
+        if (memcmp(geometry->checksum, actual_sha, sizeof(geometry->checksum)) != 0) {
             LERROR << "Logical partition metadata has invalid geometry checksum.";
             return false;
         }
@@ -452,6 +452,34 @@ std::string GetPartitionGroupName(const LpMetadataPartitionGroup& group) {
 
 std::string GetBlockDevicePartitionName(const LpMetadataBlockDevice& block_device) {
     return NameFromFixedArray(block_device.partition_name, sizeof(block_device.partition_name));
+}
+
+std::unique_ptr<LpMetadata> ParseSuperPartition(const void* buffer, size_t size,
+                                                uint32_t slot_number) {
+    if (size < GetBackupGeometryOffset() + LP_METADATA_GEOMETRY_SIZE) {
+        LOG(ERROR) << "Buffer too small to parse geometry";
+        return nullptr;
+    }
+    LpMetadataGeometry geometry;
+    if (!ParseGeometry(reinterpret_cast<const uint8_t*>(buffer) + GetPrimaryGeometryOffset(),
+                       &geometry)) {
+        if (!ParseGeometry(reinterpret_cast<const uint8_t*>(buffer) + GetBackupGeometryOffset(),
+                           &geometry)) {
+            LOG(ERROR) << "Both primary and backup geometry failed to parse";
+            return nullptr;
+        }
+    }
+    auto metadata = ParseMetadata(geometry,
+                                  reinterpret_cast<const uint8_t*>(buffer) +
+                                          GetPrimaryMetadataOffset(geometry, slot_number),
+                                  geometry.metadata_max_size);
+    if (metadata) {
+        return metadata;
+    }
+    return ParseMetadata(geometry,
+                         reinterpret_cast<const uint8_t*>(buffer) +
+                                 GetBackupMetadataOffset(geometry, slot_number),
+                         geometry.metadata_max_size);
 }
 
 }  // namespace fs_mgr
