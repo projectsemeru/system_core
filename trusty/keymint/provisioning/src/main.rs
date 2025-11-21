@@ -36,9 +36,13 @@ struct Cli {
 
 #[derive(Subcommand, Debug, Clone)]
 enum Action {
+    /// Fetch attestation IDs from the KeyMint.
+    #[clap(visible_alias = "get-attestation-ids")]
+    GetAttestationIds,
+
     /// Provisions attestation IDs to the KeyMint.
     #[clap(visible_alias = "set-attestation-ids")]
-    SetAttestationIds(AttestationIdsArgs),
+    SetAttestationIds(Box<AttestationIdsArgs>),
 }
 
 #[derive(Args, Clone, Debug, Default)]
@@ -106,6 +110,9 @@ fn try_main() -> Result<()> {
 
     info!("Starting command: {:?}", cli.action);
     match &cli.action {
+        Action::GetAttestationIds => {
+            get_attestation_ids(&provisioning_service)?;
+        }
         Action::SetAttestationIds(args) => {
             set_attestation_ids(&provisioning_service, args.clone())?;
         }
@@ -117,7 +124,7 @@ fn try_main() -> Result<()> {
 
 fn set_attestation_ids(
     provisioning_service: &Strong<dyn IProvisioning>,
-    args: AttestationIdsArgs,
+    args: Box<AttestationIdsArgs>,
 ) -> Result<()> {
     let attest_ids = collect_attestation_ids(args)?;
 
@@ -128,7 +135,29 @@ fn set_attestation_ids(
     Ok(())
 }
 
-fn collect_attestation_ids(args: AttestationIdsArgs) -> Result<AttestationIds> {
+fn get_attestation_ids(provisioning_service: &Strong<dyn IProvisioning>) -> Result<()> {
+    let attest_ids: AttestationIds =
+        provisioning_service.getAttestationIds().context("get attestation IDs via RPC binder")?;
+    info!("Fetched Attestation IDs.");
+    print_attestation_ids(&attest_ids);
+    Ok(())
+}
+
+fn print_attestation_ids(ids: &AttestationIds) {
+    println!("AttestationIds {{");
+    println!("  brand: {:?}", ids.brand);
+    println!("  device: {:?}", ids.device);
+    println!("  product: {:?}", ids.product);
+    println!("  serial: {:?}", ids.serial);
+    println!("  imei: {:?}", ids.imei);
+    println!("  imei2: {:?}", ids.imei2);
+    println!("  meid:  {:?}", ids.meid);
+    println!("  manufacturer: {:?}", ids.manufacturer);
+    println!("  model: {:?}", ids.model);
+    println!("}}");
+}
+
+fn collect_attestation_ids(args: Box<AttestationIdsArgs>) -> Result<AttestationIds> {
     let attest_ids = AttestationIds {
         brand: args.brand.map_or_else(|| get_prop("ro.product.brand"), |s| Ok(s.into_bytes()))?,
         device: args
