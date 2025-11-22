@@ -59,8 +59,7 @@ namespace fastboot {
 
 /*************************** PUBLIC *******************************/
 FastBootDriver::FastBootDriver(std::unique_ptr<Transport> transport,
-                               DriverCallbacks driver_callbacks,
-                               bool no_checks)
+                               DriverCallbacks driver_callbacks, bool no_checks)
     : transport_(std::move(transport)),
       prolog_(std::move(driver_callbacks.prolog)),
       epilog_(std::move(driver_callbacks.epilog)),
@@ -68,8 +67,7 @@ FastBootDriver::FastBootDriver(std::unique_ptr<Transport> transport,
       text_(std::move(driver_callbacks.text)),
       disable_checks_(no_checks) {}
 
-FastBootDriver::~FastBootDriver() {
-}
+FastBootDriver::~FastBootDriver() {}
 
 RetCode FastBootDriver::Boot(std::string* response, std::vector<std::string>* info) {
     return RawCommand(FB_CMD_BOOT, "Booting", response, info);
@@ -357,6 +355,25 @@ RetCode FastBootDriver::UploadInner(const std::string& outfile, std::string* res
 RetCode FastBootDriver::FetchToFd(const std::string& partition, android::base::borrowed_fd fd,
                                   int64_t offset, int64_t size, std::string* response,
                                   std::vector<std::string>* info) {
+    if (fd.get() < 0) {
+        return BAD_ARG;
+    }
+    return Fetch(
+            partition,
+            [&](const char* data, uint64_t size) {
+                if (!android::base::WriteFully(fd, data, size)) {
+                    error_ = android::base::StringPrintf("Cannot write: %s", strerror(errno));
+                    return IO_ERROR;
+                }
+                return SUCCESS;
+            },
+            offset, size, response, info);
+}
+
+RetCode FastBootDriver::Fetch(const std::string& partition,
+                              const std::function<RetCode(const char*, uint64_t)>& write_fn,
+                              int64_t offset, int64_t size, std::string* response,
+                              std::vector<std::string>* info) {
     prolog_(android::base::StringPrintf("Fetching %s (offset=%" PRIx64 ", size=%" PRIx64 ")",
                                         partition.c_str(), offset, size));
     std::string cmd = FB_CMD_FETCH ":" + partition;
@@ -366,13 +383,7 @@ RetCode FastBootDriver::FetchToFd(const std::string& partition, android::base::b
             cmd += android::base::StringPrintf(":0x%08" PRIx64, size);
         }
     }
-    RetCode ret = RunAndReadBuffer(cmd, response, info, [&](const char* data, uint64_t size) {
-        if (!android::base::WriteFully(fd, data, size)) {
-            error_ = android::base::StringPrintf("Cannot write: %s", strerror(errno));
-            return IO_ERROR;
-        }
-        return SUCCESS;
-    });
+    RetCode ret = RunAndReadBuffer(cmd, response, info, write_fn);
     epilog_(ret);
     return ret;
 }

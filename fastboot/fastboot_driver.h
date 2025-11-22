@@ -105,6 +105,10 @@ class FastBootDriver : public IFastBootDriver {
     RetCode FetchToFd(const std::string& partition, android::base::borrowed_fd fd,
                       int64_t offset = -1, int64_t size = -1, std::string* response = nullptr,
                       std::vector<std::string>* info = nullptr) override;
+    RetCode Fetch(const std::string& partition,
+                  const std::function<RetCode(const char*, uint64_t)>& write_fn,
+                  int64_t offset = -1, int64_t size = -1, std::string* response = nullptr,
+                  std::vector<std::string>* info = nullptr) override;
 
     /* HIGHER LEVEL COMMANDS -- Composed of the commands above */
     RetCode FlashPartition(const std::string& partition, const std::vector<char>& data) override;
