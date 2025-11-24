@@ -21,8 +21,6 @@
 #include <android-base/properties.h>
 #include <com_android_libsnapshot.h>
 
-#include <optional>
-
 namespace android {
 namespace snapshot {
 
@@ -56,6 +54,10 @@ bool IsUblkEnabled() {
     bool kernel_support = KernelSupportsUblk();
 
     return (property_enabled && flag_enabled && kernel_support);
+}
+
+bool IsSnapuserdReadBatchingEnabled() {
+    return com::android::libsnapshot::snapuserd_read_batching();
 }
 
 }  // namespace snapshot

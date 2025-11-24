@@ -15,7 +15,9 @@
 //
 #pragma once
 
+#include <functional>
 #include <string>
+#include <vector>
 
 #include <sparse/sparse.h>
 #include "android-base/unique_fd.h"
@@ -51,6 +53,26 @@ class IFastBootDriver {
                               int64_t offset = -1, int64_t size = -1,
                               std::string* response = nullptr,
                               std::vector<std::string>* info = nullptr) = 0;
+
+    RetCode virtual Fetch(const std::string& partition,
+                          const std::function<RetCode(const char*, uint64_t)>& write_fn,
+                          int64_t offset = -1, int64_t size = -1, std::string* response = nullptr,
+                          std::vector<std::string>* info = nullptr) = 0;
+
+    // Fetch data to containers such as std::vector, container must support
+    // insertion at end of container.
+    template <typename T>
+    RetCode Fetch(const std::string& partition, T* container, int64_t offset = -1,
+                  int64_t size = -1, std::string* response = nullptr,
+                  std::vector<std::string>* info = nullptr) {
+        return Fetch(
+                partition,
+                [container](const char* data, uint64_t size) {
+                    container->insert(container->end(), data, data + size);
+                    return fastboot::SUCCESS;
+                },
+                offset, size, response, info);
+    }
     RetCode virtual Download(const std::string& name, android::base::borrowed_fd fd, size_t size,
                              std::string* response = nullptr,
                              std::vector<std::string>* info = nullptr) = 0;

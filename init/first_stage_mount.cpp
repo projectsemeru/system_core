@@ -77,59 +77,6 @@ using namespace std::literals;
 namespace android {
 namespace init {
 
-// Class Declarations
-// ------------------
-class FirstStageMountVBootV2 : public FirstStageMount {
-  public:
-    friend void SetInitAvbVersionInRecovery();
-
-    FirstStageMountVBootV2(Fstab fstab);
-    virtual ~FirstStageMountVBootV2() = default;
-
-    bool DoCreateDevices() override;
-    bool DoFirstStageMount() override;
-
-  private:
-    bool InitDevices();
-    bool InitRequiredDevices(std::set<std::string> devices);
-    bool CreateLogicalPartitions();
-    bool CreateSnapshotPartitions(SnapshotManager* sm);
-    bool MountPartition(const Fstab::iterator& begin, bool erase_same_mounts,
-                        Fstab::iterator* end = nullptr);
-
-    bool MountPartitions();
-    bool TrySwitchSystemAsRoot();
-    bool IsDmLinearEnabled();
-    void GetSuperDeviceName(std::set<std::string>* devices);
-    bool InitDmLinearBackingDevices(const android::fs_mgr::LpMetadata& metadata);
-    void UseDsuIfPresent();
-    // Reads all fstab.avb_keys from the ramdisk for first-stage mount.
-    void PreloadAvbKeys();
-    // Copies /avb/*.avbpubkey used for DSU from the ramdisk to /metadata for key
-    // revocation check by DSU installation service.
-    void CopyDsuAvbKeys();
-
-    bool GetDmVerityDevices(std::set<std::string>* devices);
-    bool SetUpDmVerity(FstabEntry* fstab_entry);
-
-    bool InitAvbHandle();
-
-    bool dsu_not_on_userdata_ = false;
-    bool use_snapuserd_ = false;
-
-    Fstab fstab_;
-    // The super path is only set after InitDevices, and is invalid before.
-    std::string super_path_;
-    std::string super_partition_name_;
-    BlockDevInitializer block_dev_init_;
-    // Reads all AVB keys before chroot into /system, as they might be used
-    // later when mounting other partitions, e.g., /vendor and /product.
-    std::map<std::string, std::vector<std::string>> preload_avb_key_blobs_;
-
-    std::vector<std::string> vbmeta_partitions_;
-    AvbUniquePtr avb_handle_;
-};
-
 // Static Functions
 // ----------------
 static inline bool IsDtVbmetaCompatible(const Fstab& fstab) {
@@ -237,10 +184,10 @@ Result<std::unique_ptr<FirstStageMount>> FirstStageMount::Create(const std::stri
         return fstab.error();
     }
 
-    return std::make_unique<FirstStageMountVBootV2>(std::move(*fstab));
+    return std::make_unique<FirstStageMount>(std::move(*fstab));
 }
 
-bool FirstStageMountVBootV2::DoCreateDevices() {
+bool FirstStageMount::DoCreateDevices() {
     if (!InitDevices()) return false;
 
     // Mount /metadata before creating logical partitions, since we need to
@@ -262,7 +209,7 @@ bool FirstStageMountVBootV2::DoCreateDevices() {
     return true;
 }
 
-bool FirstStageMountVBootV2::DoFirstStageMount() {
+bool FirstStageMount::DoFirstStageMount() {
     if (!IsDmLinearEnabled() && fstab_.empty()) {
         // Nothing to mount.
         LOG(INFO) << "First stage mount skipped (missing/incompatible/empty fstab in device tree)";
@@ -279,7 +226,7 @@ static bool IsMicrodroidStrictBoot() {
     return access("/proc/device-tree/chosen/avf,strict-boot", F_OK) == 0;
 }
 
-bool FirstStageMountVBootV2::InitDevices() {
+bool FirstStageMount::InitDevices() {
     if (!block_dev_init_.InitBootDevicesFromPartUuid()) {
         return false;
     }
@@ -317,14 +264,14 @@ bool FirstStageMountVBootV2::InitDevices() {
     return true;
 }
 
-bool FirstStageMountVBootV2::IsDmLinearEnabled() {
+bool FirstStageMount::IsDmLinearEnabled() {
     for (const auto& entry : fstab_) {
         if (entry.fs_mgr_flags.logical) return true;
     }
     return false;
 }
 
-void FirstStageMountVBootV2::GetSuperDeviceName(std::set<std::string>* devices) {
+void FirstStageMount::GetSuperDeviceName(std::set<std::string>* devices) {
     // Add any additional devices required for dm-linear mappings.
     if (!IsDmLinearEnabled()) {
         return;
@@ -336,7 +283,7 @@ void FirstStageMountVBootV2::GetSuperDeviceName(std::set<std::string>* devices) 
 // Creates devices with uevent->partition_name matching ones in the given set.
 // Found partitions will then be removed from it for the subsequent member
 // function to check which devices are NOT created.
-bool FirstStageMountVBootV2::InitRequiredDevices(std::set<std::string> devices) {
+bool FirstStageMount::InitRequiredDevices(std::set<std::string> devices) {
     if (!block_dev_init_.InitDeviceMapper()) {
         return false;
     }
@@ -346,8 +293,7 @@ bool FirstStageMountVBootV2::InitRequiredDevices(std::set<std::string> devices) 
     return block_dev_init_.InitDevices(std::move(devices));
 }
 
-bool FirstStageMountVBootV2::InitDmLinearBackingDevices(
-        const android::fs_mgr::LpMetadata& metadata) {
+bool FirstStageMount::InitDmLinearBackingDevices(const android::fs_mgr::LpMetadata& metadata) {
     std::set<std::string> devices;
 
     auto partition_names = android::fs_mgr::GetBlockDevicePartitionNames(metadata);
@@ -364,7 +310,7 @@ bool FirstStageMountVBootV2::InitDmLinearBackingDevices(
     return InitRequiredDevices(std::move(devices));
 }
 
-bool FirstStageMountVBootV2::CreateLogicalPartitions() {
+bool FirstStageMount::CreateLogicalPartitions() {
     if (!IsDmLinearEnabled()) {
         return true;
     }
@@ -403,7 +349,7 @@ bool FirstStageMountVBootV2::CreateLogicalPartitions() {
     return android::fs_mgr::CreateLogicalPartitions(*metadata.get(), super_path_);
 }
 
-bool FirstStageMountVBootV2::CreateSnapshotPartitions(SnapshotManager* sm) {
+bool FirstStageMount::CreateSnapshotPartitions(SnapshotManager* sm) {
     // When COW images are present for snapshots, they are stored on
     // the data partition.
     if (!InitRequiredDevices({"userdata"})) {
@@ -442,8 +388,8 @@ bool FirstStageMountVBootV2::CreateSnapshotPartitions(SnapshotManager* sm) {
     return true;
 }
 
-bool FirstStageMountVBootV2::MountPartition(const Fstab::iterator& begin, bool erase_same_mounts,
-                                            Fstab::iterator* end) {
+bool FirstStageMount::MountPartition(const Fstab::iterator& begin, bool erase_same_mounts,
+                                     Fstab::iterator* end) {
     // Sets end to begin + 1, so we can just return on failure below.
     if (end) {
         *end = begin + 1;
@@ -487,7 +433,7 @@ bool FirstStageMountVBootV2::MountPartition(const Fstab::iterator& begin, bool e
     return mounted;
 }
 
-void FirstStageMountVBootV2::PreloadAvbKeys() {
+void FirstStageMount::PreloadAvbKeys() {
     for (const auto& entry : fstab_) {
         // No need to cache the key content if it's empty, or is already cached.
         if (entry.avb_keys.empty() || preload_avb_key_blobs_.count(entry.avb_keys)) {
@@ -534,7 +480,7 @@ void FirstStageMountVBootV2::PreloadAvbKeys() {
 // If system is in the fstab then we're not a system-as-root device, and in
 // this case, we mount system first then pivot to it.  From that point on,
 // we are effectively identical to a system-as-root device.
-bool FirstStageMountVBootV2::TrySwitchSystemAsRoot() {
+bool FirstStageMount::TrySwitchSystemAsRoot() {
     UseDsuIfPresent();
     // Preloading all AVB keys from the ramdisk before switching root to /system.
     PreloadAvbKeys();
@@ -596,7 +542,7 @@ static bool MaybeDeriveMicrodroidVendorDiceNode(Fstab* fstab) {
     return true;
 }
 
-bool FirstStageMountVBootV2::MountPartitions() {
+bool FirstStageMount::MountPartitions() {
     if (!TrySwitchSystemAsRoot()) return false;
 
     if (IsMicrodroid() && android::virtualization::IsOpenDiceChangesFlagEnabled()) {
@@ -685,7 +631,7 @@ bool FirstStageMountVBootV2::MountPartitions() {
 // copy files to /metadata is NOT fatal, because it is auxiliary to perform
 // public key matching before booting into DSU images on next boot. The actual
 // public key matching will still be done on next boot to DSU.
-void FirstStageMountVBootV2::CopyDsuAvbKeys() {
+void FirstStageMount::CopyDsuAvbKeys() {
     std::error_code ec;
     // Removing existing keys in gsi::kDsuAvbKeyDir as they might be stale.
     std::filesystem::remove_all(gsi::kDsuAvbKeyDir, ec);
@@ -701,7 +647,7 @@ void FirstStageMountVBootV2::CopyDsuAvbKeys() {
     }
 }
 
-void FirstStageMountVBootV2::UseDsuIfPresent() {
+void FirstStageMount::UseDsuIfPresent() {
     std::string error;
 
     if (!android::gsi::CanBootIntoGsi(&error)) {
@@ -738,7 +684,7 @@ void FirstStageMountVBootV2::UseDsuIfPresent() {
     TransformFstabForDsu(&fstab_, active_dsu, dsu_partitions);
 }
 
-FirstStageMountVBootV2::FirstStageMountVBootV2(Fstab fstab)
+FirstStageMount::FirstStageMount(Fstab fstab)
     : fstab_(std::move(fstab)), avb_handle_(nullptr) {
     super_partition_name_ = fs_mgr_get_super_partition_name();
 
@@ -762,7 +708,7 @@ FirstStageMountVBootV2::FirstStageMountVBootV2(Fstab fstab)
     }
 }
 
-bool FirstStageMountVBootV2::GetDmVerityDevices(std::set<std::string>* devices) {
+bool FirstStageMount::GetDmVerityDevices(std::set<std::string>* devices) {
     bool need_dm_verity = false;
 
     std::set<std::string> logical_partitions;
@@ -816,7 +762,7 @@ bool IsHashtreeDisabled(const AvbHandle& vbmeta, const std::string& mount_point)
     return false;
 }
 
-bool FirstStageMountVBootV2::SetUpDmVerity(FstabEntry* fstab_entry) {
+bool FirstStageMount::SetUpDmVerity(FstabEntry* fstab_entry) {
     AvbHashtreeResult hashtree_result;
 
     // It's possible for a fstab_entry to have both avb_keys and avb flag.
@@ -881,7 +827,7 @@ bool FirstStageMountVBootV2::SetUpDmVerity(FstabEntry* fstab_entry) {
     }
 }
 
-bool FirstStageMountVBootV2::InitAvbHandle() {
+bool FirstStageMount::InitAvbHandle() {
     if (avb_handle_) return true;  // Returns true if the handle is already initialized.
 
     avb_handle_ = AvbHandle::Open();
@@ -917,7 +863,7 @@ void SetInitAvbVersionInRecovery() {
     // We only set INIT_AVB_VERSION when the AVB verification succeeds, i.e., the
     // Open() function returns a valid handle.
     // We don't need to mount partitions here in recovery mode.
-    FirstStageMountVBootV2 avb_first_mount(std::move(*fstab));
+    FirstStageMount avb_first_mount(std::move(*fstab));
     if (!avb_first_mount.InitDevices()) {
         LOG(ERROR) << "Failed to init devices for INIT_AVB_VERSION";
         return;

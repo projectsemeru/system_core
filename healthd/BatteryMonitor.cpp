@@ -278,8 +278,12 @@ BatteryHealth getBatteryHealthStatus(int status) {
 
 BatteryChargingPolicy getBatteryChargingPolicy(const char* chargingPolicy) {
     static SysfsStringEnumMap<BatteryChargingPolicy> batteryChargingPolicyMap[] = {
-            {"0", BatteryChargingPolicy::INVALID},   {"1", BatteryChargingPolicy::DEFAULT},
-            {"2", BatteryChargingPolicy::LONG_LIFE}, {"3", BatteryChargingPolicy::ADAPTIVE},
+            {"0", BatteryChargingPolicy::INVALID},
+            {"1", BatteryChargingPolicy::DEFAULT},
+            {"2", BatteryChargingPolicy::ADAPTIVE},
+            {"3", BatteryChargingPolicy::ADAPTIVE},
+            {"4", BatteryChargingPolicy::LONG_LIFE},
+            {"5", BatteryChargingPolicy::FORCE_FULL_CHARGE},
             {NULL, BatteryChargingPolicy::DEFAULT},
     };
 

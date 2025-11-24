@@ -19,13 +19,11 @@
 #include <string.h>
 
 #include <algorithm>
-#include <limits>
 
 #include <android-base/unique_fd.h>
 
 #include "liblp/liblp.h"
 #include "liblp/property_fetcher.h"
-#include "reader.h"
 #include "utility.h"
 
 namespace android {
