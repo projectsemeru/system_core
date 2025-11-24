@@ -71,8 +71,6 @@ init_device_sources = [
     "devices.cpp",
     "firmware_handler.cpp",
     "first_stage_console.cpp",
-    "first_stage_init.cpp",
-    "first_stage_mount.cpp",
     "fscrypt_init_extensions.cpp",
     "init.cpp",
     "lmkd_service.cpp",
@@ -332,6 +330,10 @@ cc_binary {
         "libbinder",
         "libutils",
     ],
+    srcs: [
+        "first_stage_init.cpp",
+        "first_stage_mount.cpp",
+    ],
     required: [
         "init_recovery.rc",
         "ueventd.rc.recovery",
@@ -438,6 +440,7 @@ init_first_stage_cc_defaults {
         "-DALLOW_FIRST_STAGE_CONSOLE=0",
         "-DALLOW_LOCAL_PROP_OVERRIDE=0",
         "-DALLOW_PERMISSIVE_SELINUX=0",
+        "-DFIRST_STAGE_INIT=1",
         "-DREBOOT_BOOTLOADER_ON_PANIC=0",
         "-DWORLD_WRITABLE_KMSG=0",
         "-DDUMP_ON_UMOUNT_FAILURE=0",
