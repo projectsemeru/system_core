@@ -333,6 +333,7 @@ cc_binary {
     srcs: [
         "first_stage_init.cpp",
         "first_stage_mount.cpp",
+        "first_stage_mount_android.cpp",
     ],
     required: [
         "init_recovery.rc",
@@ -387,6 +388,7 @@ init_first_stage_cc_defaults {
         "first_stage_init.cpp",
         "first_stage_main.cpp",
         "first_stage_mount.cpp",
+        "first_stage_mount_android.cpp",
         "ota_utils.cpp",
         "reboot_utils.cpp",
         "selabel.cpp",

@@ -54,6 +54,7 @@ class FirstStageMount {
                         Fstab::iterator* end = nullptr);
 
     bool MountPartitions();
+    void MountOverlays();
     bool TrySwitchSystemAsRoot();
     bool IsDmLinearEnabled();
     void GetSuperDeviceName(std::set<std::string>* devices);
