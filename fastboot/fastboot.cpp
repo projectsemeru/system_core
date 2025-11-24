@@ -1225,6 +1225,19 @@ static void copy_avb_footer(const FlashingPlan* fp, const std::string& partition
     buf->sz = partition_size;
 }
 
+void flash_partition(const FlashingPlan* fp, const std::string& partition, SparsePtr sparse_file) {
+    std::vector<SparsePtr> files;
+    if (int limit = get_sparse_limit(sparse_file_len(sparse_file.get(), true, false), fp)) {
+        if (!split_file(sparse_file.get(), limit, &files)) {
+            LOG(FATAL) << "Failed to resparse data for partition " << partition << " sparse limit "
+                       << limit << " bytes";
+        }
+    } else {
+        files.emplace_back(std::move(sparse_file));
+    }
+    flash_partition_files(fp->fb, partition, files);
+}
+
 void flash_partition_files(IFastBootDriver* fb, const std::string& partition,
                            const std::vector<SparsePtr>& files) {
     for (size_t i = 0; i < files.size(); i++) {

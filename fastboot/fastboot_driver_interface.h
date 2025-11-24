@@ -81,6 +81,17 @@ class IFastBootDriver {
                 },
                 offset, size, response, info);
     }
+    RetCode FetchAtOffset(const std::string& partition, void* data, size_t size, int64_t offset) {
+        auto bytes = reinterpret_cast<char*>(data);
+        return Fetch(
+                partition,
+                [bytes](const char* chunk, uint64_t chunk_size) mutable {
+                    memcpy(bytes, chunk, chunk_size);
+                    bytes += chunk_size;
+                    return SUCCESS;
+                },
+                offset, size);
+    }
     RetCode virtual Download(const std::string& name, android::base::borrowed_fd fd, size_t size,
                              std::string* response = nullptr,
                              std::vector<std::string>* info = nullptr) = 0;
