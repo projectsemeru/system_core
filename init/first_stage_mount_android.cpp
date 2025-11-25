@@ -14,12 +14,13 @@
 // limitations under the License.
 //
 
+#include "first_stage_mount_android.h"
+
 #include <android-base/strings.h>
 #include <fs_mgr.h>
 #include <fs_mgr_overlayfs.h>
 #include <libfiemap/image_manager.h>
 #include <libgsi/libgsi.h>
-#include "first_stage_mount.h"
 #include "snapuserd_transition.h"
 #include "util.h"
 
@@ -27,8 +28,45 @@ namespace android {
 namespace init {
 
 using android::fiemap::IImageManager;
+using android::fs_mgr::AvbHandle;
+using android::fs_mgr::AvbUniquePtr;
 using android::fs_mgr::Fstab;
 using android::fs_mgr::FstabEntry;
+
+static inline bool IsDtVbmetaCompatible(const Fstab& fstab) {
+    if (std::any_of(fstab.begin(), fstab.end(),
+                    [](const auto& entry) { return entry.fs_mgr_flags.avb; })) {
+        return true;
+    }
+    return is_android_dt_value_expected("vbmeta/compatible", "android,vbmeta");
+}
+
+static Result<Fstab> ReadFirstStageFstabAndroid() {
+    Fstab fstab;
+    if (!ReadFstabFromDt(&fstab)) {
+        if (ReadDefaultFstab(&fstab)) {
+            fstab.erase(std::remove_if(fstab.begin(), fstab.end(),
+                                       [](const auto& entry) {
+                                           return !entry.fs_mgr_flags.first_stage_mount;
+                                       }),
+                        fstab.end());
+        } else {
+            return Error() << "failed to read default fstab for first stage mount";
+        }
+    }
+    return fstab;
+}
+
+FirstStageMountAndroid::FirstStageMountAndroid(Fstab fstab) : FirstStageMount(std::move(fstab)) {}
+
+Result<std::unique_ptr<FirstStageMount>> FirstStageMount::Create(const std::string& cmdline) {
+    Result<Fstab> fstab = ReadFirstStageFstabAndroid();
+    if (!fstab.ok()) {
+        return fstab.error();
+    }
+
+    return std::make_unique<FirstStageMountAndroid>(std::move(*fstab));
+}
 
 static bool GetRootEntry(FstabEntry* root_entry) {
     Fstab proc_mounts;
@@ -59,7 +97,32 @@ static bool GetRootEntry(FstabEntry* root_entry) {
     return true;
 }
 
-bool FirstStageMount::InitDmLinearBackingDevices(const android::fs_mgr::LpMetadata& metadata) {
+bool FirstStageMountAndroid::DoCreateDevices() {
+    if (!FirstStageMount::DoCreateDevices()) {
+        return false;
+    }
+
+    // Mount /metadata before creating logical partitions, since we need to
+    // know whether a snapshot merge is in progress.
+    auto metadata_partition = std::find_if(fstab_.begin(), fstab_.end(), [](const auto& entry) {
+        return entry.mount_point == "/metadata";
+    });
+    if (metadata_partition != fstab_.end()) {
+        if (MountPartition(metadata_partition, true /* erase_same_mounts */)) {
+            // Copies DSU AVB keys from the ramdisk to /metadata.
+            // Must be done before the following TrySwitchSystemAsRoot().
+            // Otherwise, ramdisk will be inaccessible after switching root.
+            CopyDsuAvbKeys();
+        }
+    }
+
+    if (!CreateLogicalPartitions()) return false;
+
+    return true;
+}
+
+bool FirstStageMountAndroid::InitDmLinearBackingDevices(
+        const android::fs_mgr::LpMetadata& metadata) {
     std::set<std::string> devices;
 
     auto partition_names = android::fs_mgr::GetBlockDevicePartitionNames(metadata);
@@ -76,7 +139,7 @@ bool FirstStageMount::InitDmLinearBackingDevices(const android::fs_mgr::LpMetada
     return InitRequiredDevices(std::move(devices));
 }
 
-bool FirstStageMount::CreateLogicalPartitions() {
+bool FirstStageMountAndroid::CreateLogicalPartitions() {
     if (!IsDmLinearEnabled()) {
         return true;
     }
@@ -115,7 +178,7 @@ bool FirstStageMount::CreateLogicalPartitions() {
     return android::fs_mgr::CreateLogicalPartitions(*metadata.get(), super_path_);
 }
 
-bool FirstStageMount::CreateSnapshotPartitions(SnapshotManager* sm) {
+bool FirstStageMountAndroid::CreateSnapshotPartitions(SnapshotManager* sm) {
     // When COW images are present for snapshots, they are stored on
     // the data partition.
     if (!InitRequiredDevices({"userdata"})) {
@@ -154,7 +217,7 @@ bool FirstStageMount::CreateSnapshotPartitions(SnapshotManager* sm) {
     return true;
 }
 
-void FirstStageMount::UseDsuIfPresent() {
+void FirstStageMountAndroid::UseDsuIfPresent() {
     std::string error;
 
     if (!android::gsi::CanBootIntoGsi(&error)) {
@@ -191,7 +254,7 @@ void FirstStageMount::UseDsuIfPresent() {
     TransformFstabForDsu(&fstab_, active_dsu, dsu_partitions);
 }
 
-void FirstStageMount::MountOverlays() {
+void FirstStageMountAndroid::MountOverlays() {
     for (const auto& entry : fstab_) {
         if (entry.fs_type == "overlay") {
             fs_mgr_mount_overlayfs_fstab_entry(entry);
@@ -224,6 +287,69 @@ void FirstStageMount::MountOverlays() {
     MapScratchPartitionIfNeeded(&fstab_, init_devices);
 
     fs_mgr_overlayfs_mount_all(&fstab_);
+}
+
+void FirstStageMountAndroid::SaveRamdiskPathToSnapuserd() {
+    if (use_snapuserd_) {
+        android::init::SaveRamdiskPathToSnapuserd();
+    }
+}
+
+// Preserves /avb/*.avbpubkey to /metadata/gsi/dsu/avb/, so they can be used for
+// key revocation check by DSU installation service.  Note that failing to
+// copy files to /metadata is NOT fatal, because it is auxiliary to perform
+// public key matching before booting into DSU images on next boot. The actual
+// public key matching will still be done on next boot to DSU.
+void FirstStageMountAndroid::CopyDsuAvbKeys() {
+    std::error_code ec;
+    // Removing existing keys in gsi::kDsuAvbKeyDir as they might be stale.
+    std::filesystem::remove_all(gsi::kDsuAvbKeyDir, ec);
+    if (ec) {
+        LOG(ERROR) << "Failed to remove directory " << gsi::kDsuAvbKeyDir << ": " << ec.message();
+    }
+    // Copy keys from the ramdisk /avb/* to gsi::kDsuAvbKeyDir.
+    static constexpr char kRamdiskAvbKeyDir[] = "/avb";
+    std::filesystem::copy(kRamdiskAvbKeyDir, gsi::kDsuAvbKeyDir, ec);
+    if (ec) {
+        LOG(ERROR) << "Failed to copy " << kRamdiskAvbKeyDir << " into " << gsi::kDsuAvbKeyDir
+                   << ": " << ec.message();
+    }
+}
+
+void SetInitAvbVersionInRecovery() {
+    if (!IsRecoveryMode()) {
+        LOG(INFO) << "Skipped setting INIT_AVB_VERSION (not in recovery mode)";
+        return;
+    }
+
+    auto fstab = ReadFirstStageFstabAndroid();
+    if (!fstab.ok()) {
+        LOG(ERROR) << fstab.error();
+        return;
+    }
+
+    if (!IsDtVbmetaCompatible(*fstab)) {
+        LOG(INFO) << "Skipped setting INIT_AVB_VERSION (not vbmeta compatible)";
+        return;
+    }
+
+    // Initializes required devices for the subsequent AvbHandle::Open()
+    // to verify AVB metadata on all partitions in the verified chain.
+    // We only set INIT_AVB_VERSION when the AVB verification succeeds, i.e., the
+    // Open() function returns a valid handle.
+    // We don't need to mount partitions here in recovery mode.
+    FirstStageMount avb_first_mount(std::move(*fstab));
+    if (!avb_first_mount.InitDevices()) {
+        LOG(ERROR) << "Failed to init devices for INIT_AVB_VERSION";
+        return;
+    }
+
+    AvbUniquePtr avb_handle = AvbHandle::Open();
+    if (!avb_handle) {
+        PLOG(ERROR) << "Failed to open AvbHandle for INIT_AVB_VERSION";
+        return;
+    }
+    setenv("INIT_AVB_VERSION", avb_handle->avb_version().c_str(), 1);
 }
 
 }  // namespace init

@@ -20,7 +20,6 @@
 
 #include <fs_avb/fs_avb.h>
 #include <fstab/fstab.h>
-#include <libsnapshot/snapshot.h>
 #include "block_dev_initializer.h"
 #include "result.h"
 
@@ -28,10 +27,10 @@ namespace android {
 namespace init {
 
 class FirstStageMount {
+  protected:
     using AvbUniquePtr = android::fs_mgr::AvbUniquePtr;
     using Fstab = android::fs_mgr::Fstab;
     using FstabEntry = android::fs_mgr::FstabEntry;
-    using SnapshotManager = android::snapshot::SnapshotManager;
 
   public:
     friend void SetInitAvbVersionInRecovery();
@@ -42,37 +41,31 @@ class FirstStageMount {
     // The factory method to create a FirstStageMount instance.
     static Result<std::unique_ptr<FirstStageMount>> Create(const std::string& cmdline);
 
-    bool DoCreateDevices();
+    virtual bool DoCreateDevices();
     bool DoFirstStageMount();
 
-  private:
+  protected:
+    virtual void MountOverlays() {}
+    virtual void UseDsuIfPresent() {}
+    virtual void SaveRamdiskPathToSnapuserd() {}
+    virtual bool AllowVerityCheckAtMostOnce() { return false; }
+
     bool InitDevices();
     bool InitRequiredDevices(std::set<std::string> devices);
-    bool CreateLogicalPartitions();
-    bool CreateSnapshotPartitions(SnapshotManager* sm);
     bool MountPartition(const Fstab::iterator& begin, bool erase_same_mounts,
                         Fstab::iterator* end = nullptr);
 
     bool MountPartitions();
-    void MountOverlays();
     bool TrySwitchSystemAsRoot();
     bool IsDmLinearEnabled();
     void GetSuperDeviceName(std::set<std::string>* devices);
-    bool InitDmLinearBackingDevices(const android::fs_mgr::LpMetadata& metadata);
-    void UseDsuIfPresent();
     // Reads all fstab.avb_keys from the ramdisk for first-stage mount.
     void PreloadAvbKeys();
-    // Copies /avb/*.avbpubkey used for DSU from the ramdisk to /metadata for key
-    // revocation check by DSU installation service.
-    void CopyDsuAvbKeys();
 
     bool GetDmVerityDevices(std::set<std::string>* devices);
     bool SetUpDmVerity(FstabEntry* fstab_entry);
 
     bool InitAvbHandle();
-
-    bool dsu_not_on_userdata_ = false;
-    bool use_snapuserd_ = false;
 
     Fstab fstab_;
     // The super path is only set after InitDevices, and is invalid before.
