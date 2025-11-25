@@ -13,19 +13,33 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
+
 #include "task.h"
 
-#include "fastboot_driver.h"
-
-#include <android-base/logging.h>
 #include <android-base/parseint.h>
 
 #include "fastboot.h"
+#include "fastboot_driver_interface.h"
 #include "filesystem.h"
+#include "liblp/builder.h"
+#include "liblp/liblp.h"
+#include "liblp/metadata_format.h"
+#include "sparse/sparse.h"
 #include "super_flash_helper.h"
 #include "util.h"
 
+// Need to include logging.h after fastboot.h, due to ERROR macro conflict
+// clang-format off
+#include <android-base/logging.h>
+// clang-format on
+
 using namespace std::string_literals;
+using android::fs_mgr::GetPrimaryMetadataOffset;
+using android::fs_mgr::MetadataBuilder;
+using android::fs_mgr::ParseSuperPartition;
+using android::fs_mgr::SlotNumberForSlotSuffix;
+using android::fs_mgr::ValidateAndSerializeMetadata;
+
 FlashTask::FlashTask(const std::string& slot, const std::string& pname, const std::string& fname,
                      const bool apply_vbmeta, const FlashingPlan* fp)
     : pname_(pname), fname_(fname), slot_(slot), apply_vbmeta_(apply_vbmeta), fp_(fp) {}
@@ -273,13 +287,71 @@ ResizeTask::ResizeTask(const FlashingPlan* fp, const std::string& pname, const s
                        const std::string& slot)
     : fp_(fp), pname_(pname), size_(size), slot_(slot) {}
 
+fastboot::RetCode FlashPartition(fastboot::IFastBootDriver* fb, const std::string& partition_name,
+                                 void* data, size_t size, off64_t offset) {
+    // We use LP_PARTITION_RESERVED_BYTES as block size because everything in
+    // liblp is aligned with this granularity
+    std::unique_ptr<struct sparse_file, decltype(&sparse_file_destroy)> sparse_file(
+            sparse_file_new(LP_PARTITION_RESERVED_BYTES, offset + size), sparse_file_destroy);
+    // Fastboot's flash protocol does not have a way to specify offset we want
+    // to write to, so we use sparse file as a way around it. Blocks which
+    // have no data will be skipped by bootloader, similar to seeking forward
+    // on a file.
+    sparse_file_add_data(sparse_file.get(), data, size, offset / LP_PARTITION_RESERVED_BYTES);
+    auto ret = fb->Download(partition_name, sparse_file.get(),
+                            sparse_file_len(sparse_file.get(), true, false), 1, 1, false);
+    if (ret != fastboot::SUCCESS) {
+        return ret;
+    }
+    return fb->Flash(partition_name);
+}
+
+fastboot::RetCode FlashMetadata(MetadataBuilder* builder, uint32_t slot_number,
+                                fastboot::IFastBootDriver* fb) {
+    auto metadata = builder->Export();
+    auto serialized = ValidateAndSerializeMetadata(*metadata);
+    return FlashPartition(fb, "super", serialized.data(), serialized.size(),
+                          GetPrimaryMetadataOffset(metadata->geometry, slot_number));
+}
+
+std::unique_ptr<MetadataBuilder> FetchAndParseMetadata(fastboot::IFastBootDriver* fb,
+                                                       uint32_t slot_number) {
+    constexpr size_t kMaxLpMetadataSize = 512 * 1024;
+    std::vector<uint8_t> buffer;
+    buffer.reserve(kMaxLpMetadataSize);
+    auto ret = fb->Fetch("super", &buffer, 0, kMaxLpMetadataSize);
+    if (ret != fastboot::SUCCESS) {
+        LOG(ERROR) << "Failed to fetch super partition for resize task " << ret;
+        return nullptr;
+    }
+    auto metadata = ParseSuperPartition(buffer.data(), buffer.size(), slot_number);
+    if (metadata == nullptr) {
+        return nullptr;
+    }
+    return MetadataBuilder::New(*metadata);
+}
+
 void ResizeTask::Run() {
-    auto resize_partition = [this](const std::string& partition) -> void {
-        if (is_logical(fp_->fb, partition)) {
-            fp_->fb->ResizePartition(partition, size_);
+    if (is_userspace_fastboot(fp_->fb)) {
+        auto resize_partition = [this](const std::string& partition) -> void {
+            if (is_logical(fp_->fb, partition)) {
+                fp_->fb->ResizePartition(partition, size_);
+            }
+        };
+        do_for_partitions(fp_->fb, pname_, slot_, resize_partition, false);
+        return;
+    }
+    auto slot_number = SlotNumberForSlotSuffix(fp_->current_slot);
+    auto builder = FetchAndParseMetadata(fp_->fb, slot_number);
+    auto resize_partition = [this,
+                             builder(builder.get())](const std::string& partition) mutable -> void {
+        auto p = builder->FindPartition(partition);
+        if (p) {
+            builder->ResizePartition(p, atoll(size_.c_str()));
         }
     };
     do_for_partitions(fp_->fb, pname_, slot_, resize_partition, false);
+    FlashMetadata(builder.get(), slot_number, fp_->fb);
 }
 
 std::string ResizeTask::ToString() const {
