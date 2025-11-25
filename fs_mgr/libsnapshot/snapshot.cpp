@@ -3984,7 +3984,7 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
     // Deduce supported features.
     bool userspace_snapshots = true;
     bool legacy_compression = GetLegacyCompressionEnabledProperty();
-    bool is_legacy_snapuserd = IsVendorFromAndroid12();
+    bool is_legacy_snapuserd = false;
 
     if (!vabc_disable_reason.empty()) {
         if (userspace_snapshots) {
@@ -4006,11 +4006,6 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
                        << ", max: " << kMaxCowVersion << ")";
             return Return::Error();
         }
-    }
-
-    if (!userspace_snapshots && is_legacy_snapuserd && legacy_compression) {
-        userspace_snapshots = true;
-        LOG(INFO) << "Vendor from Android 12. Enabling userspace snapshot for OTA install";
     }
 
     const bool using_snapuserd = userspace_snapshots || legacy_compression;
