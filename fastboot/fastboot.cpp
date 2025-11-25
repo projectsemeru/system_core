@@ -211,10 +211,12 @@ static void Status(const std::string& message) {
     last_start_time = now();
 }
 
-static void Epilog(IFastBootDriver* fb, int status) {
+static void Epilog(IFastBootDriver* fb, int status, bool crash_on_error) {
     if (status) {
         fprintf(stderr, "FAILED (%s)\n", fb->Error().c_str());
-        die("Command failed");
+        if (crash_on_error) {
+            die("Command failed");
+        }
     } else {
         double split = now();
         fprintf(stderr, "OKAY [%7.3fs]\n", (split - last_start_time));
@@ -2375,7 +2377,8 @@ int FastBootTool::Main(int argc, char* argv[]) {
     }
     fastboot::DriverCallbacks driver_callbacks = {
             .prolog = Status,
-            .epilog = [&fp](int status) { Epilog(fp->fb, status); },
+            .epilog = [&fp](int status,
+                            bool crash_on_error) { Epilog(fp->fb, status, crash_on_error); },
             .info = InfoMessage,
             .text = TextMessage,
     };
