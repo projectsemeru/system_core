@@ -454,6 +454,24 @@ std::string GetBlockDevicePartitionName(const LpMetadataBlockDevice& block_devic
     return NameFromFixedArray(block_device.partition_name, sizeof(block_device.partition_name));
 }
 
+bool ParseGeometryFromSuperPartition(const void* buffer, size_t size,
+                                     LpMetadataGeometry* geometry) {
+    if (size < GetBackupGeometryOffset() + LP_METADATA_GEOMETRY_SIZE) {
+        LOG(ERROR) << "Buffer too small to parse geometry";
+        return false;
+    }
+    if (ParseGeometry(reinterpret_cast<const uint8_t*>(buffer) + GetPrimaryGeometryOffset(),
+                      geometry)) {
+        return true;
+    }
+    if (ParseGeometry(reinterpret_cast<const uint8_t*>(buffer) + GetBackupGeometryOffset(),
+                      geometry)) {
+        return true;
+    }
+    LOG(ERROR) << "Both primary and backup geometry failed to parse";
+    return false;
+}
+
 std::unique_ptr<LpMetadata> ParseSuperPartition(const void* buffer, size_t size,
                                                 uint32_t slot_number) {
     if (size < GetBackupGeometryOffset() + LP_METADATA_GEOMETRY_SIZE) {
@@ -461,13 +479,8 @@ std::unique_ptr<LpMetadata> ParseSuperPartition(const void* buffer, size_t size,
         return nullptr;
     }
     LpMetadataGeometry geometry;
-    if (!ParseGeometry(reinterpret_cast<const uint8_t*>(buffer) + GetPrimaryGeometryOffset(),
-                       &geometry)) {
-        if (!ParseGeometry(reinterpret_cast<const uint8_t*>(buffer) + GetBackupGeometryOffset(),
-                           &geometry)) {
-            LOG(ERROR) << "Both primary and backup geometry failed to parse";
-            return nullptr;
-        }
+    if (!ParseGeometryFromSuperPartition(buffer, size, &geometry)) {
+        return nullptr;
     }
     auto metadata = ParseMetadata(geometry,
                                   reinterpret_cast<const uint8_t*>(buffer) +

@@ -131,7 +131,7 @@ RetCode FastBootDriver::SnapshotUpdateCommand(const std::string& command, std::s
     prolog_(StringPrintf("Snapshot %s", command.c_str()));
     std::string raw = FB_CMD_SNAPSHOT_UPDATE ":" + command;
     auto result = RawCommand(raw, response, info);
-    epilog_(result);
+    epilog_(result, crash_on_error_);
     return result;
 }
 
@@ -179,7 +179,7 @@ RetCode FastBootDriver::Download(const std::string& name, android::base::borrowe
                                  std::vector<std::string>* info) {
     prolog_(StringPrintf("Sending '%s' (%zu KB)", name.c_str(), size / 1024));
     auto result = Download(fd, size, response, info);
-    epilog_(result);
+    epilog_(result, crash_on_error_);
     return result;
 }
 
@@ -210,7 +210,7 @@ RetCode FastBootDriver::Download(const std::string& name, const std::vector<char
                                  std::string* response, std::vector<std::string>* info) {
     prolog_(StringPrintf("Sending '%s' (%zu KB)", name.c_str(), buf.size() / 1024));
     auto result = Download(buf, response, info);
-    epilog_(result);
+    epilog_(result, crash_on_error_);
     return result;
 }
 
@@ -242,7 +242,7 @@ RetCode FastBootDriver::Download(const std::string& partition, struct sparse_fil
     prolog_(StringPrintf("Sending sparse '%s' %zu/%zu (%u KB)", partition.c_str(), current, total,
                          size / 1024));
     auto result = Download(s, use_crc, response, info);
-    epilog_(result);
+    epilog_(result, crash_on_error_);
     return result;
 }
 
@@ -290,7 +290,7 @@ RetCode FastBootDriver::Upload(const std::string& outfile, std::string* response
                                std::vector<std::string>* info) {
     prolog_("Uploading '" + outfile + "'");
     auto result = UploadInner(outfile, response, info);
-    epilog_(result);
+    epilog_(result, crash_on_error_);
     return result;
 }
 
@@ -384,7 +384,7 @@ RetCode FastBootDriver::Fetch(const std::string& partition,
         }
     }
     RetCode ret = RunAndReadBuffer(cmd, response, info, write_fn);
-    epilog_(ret);
+    epilog_(ret, crash_on_error_);
     return ret;
 }
 
@@ -432,7 +432,7 @@ RetCode FastBootDriver::RawCommand(const std::string& cmd, const std::string& me
                                    int* dsize) {
     prolog_(message);
     auto result = RawCommand(cmd, response, info, dsize);
-    epilog_(result);
+    epilog_(result, crash_on_error_);
     return result;
 }
 
