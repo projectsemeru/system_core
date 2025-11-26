@@ -5131,6 +5131,7 @@ void SnapshotManager::UpdateCowStats(ISnapshotMergeStats* stats) {
     uint64_t cow_file_size = 0;
     uint64_t total_cow_size = 0;
     uint64_t estimated_cow_size = 0;
+    bool compression_enabled = false;
     for (const auto& snapshot : snapshots) {
         SnapshotStatus status;
         if (!ReadSnapshotStatus(lock.get(), snapshot, &status)) {
@@ -5140,11 +5141,15 @@ void SnapshotManager::UpdateCowStats(ISnapshotMergeStats* stats) {
         cow_file_size += status.cow_file_size();
         total_cow_size += status.cow_file_size() + status.cow_partition_size();
         estimated_cow_size += status.estimated_cow_size();
+        if (!status.compression_algorithm().empty() && status.compression_algorithm() != "none") {
+            compression_enabled = true;
+        }
     }
 
     stats->report()->set_cow_file_size(cow_file_size);
     stats->report()->set_total_cow_size_bytes(total_cow_size);
     stats->report()->set_estimated_cow_size_bytes(estimated_cow_size);
+    stats->report()->set_compression_enabled(compression_enabled);
 }
 
 void SnapshotManager::SetMergeStatsFeatures(ISnapshotMergeStats* stats) {
