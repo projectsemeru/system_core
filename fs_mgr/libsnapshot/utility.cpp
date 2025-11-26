@@ -200,7 +200,7 @@ bool WriteStringToFileAtomic(const std::string& content, const std::string& path
 }
 
 std::ostream& operator<<(std::ostream& os, const Now&) {
-    struct tm now {};
+    struct tm now{};
     time_t t = time(nullptr);
     localtime_r(&t, &now);
     return os << std::put_time(&now, "%Y%m%d-%H%M%S");
@@ -242,11 +242,6 @@ bool GetLegacyCompressionEnabledProperty() {
     return fetcher->GetBoolProperty("ro.virtual_ab.compression.enabled", false);
 }
 
-bool GetUserspaceSnapshotsEnabledProperty() {
-    auto fetcher = IPropertyFetcher::GetInstance();
-    return fetcher->GetBoolProperty("ro.virtual_ab.userspace.snapshots.enabled", false);
-}
-
 bool IsVendorFromAndroid12() {
     auto fetcher = IPropertyFetcher::GetInstance();
 
@@ -263,17 +258,8 @@ bool IsVendorFromAndroid12() {
 }
 
 bool CanUseUserspaceSnapshots() {
-    if (!GetUserspaceSnapshotsEnabledProperty()) {
-        LOG(INFO) << "Virtual A/B - Userspace snapshots disabled";
-        return false;
-    }
-
     if (IsDmSnapshotTestingEnabled()) {
         LOG(INFO) << "Userspace snapshots disabled for testing";
-        return false;
-    }
-    if (!KernelSupportsCompressedSnapshots()) {
-        LOG(ERROR) << "Userspace snapshots requested, but no kernel support is available.";
         return false;
     }
     return true;
@@ -315,11 +301,6 @@ std::string GetOtherPartitionName(const std::string& name) {
 bool IsDmSnapshotTestingEnabled() {
     auto fetcher = IPropertyFetcher::GetInstance();
     return fetcher->GetBoolProperty("snapuserd.test.dm.snapshots", false);
-}
-
-bool KernelSupportsCompressedSnapshots() {
-    auto& dm = DeviceMapper::Instance();
-    return dm.GetTargetByName("user", nullptr);
 }
 
 static bool IsDebuggable() {

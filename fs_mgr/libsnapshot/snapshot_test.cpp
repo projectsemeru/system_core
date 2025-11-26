@@ -172,14 +172,10 @@ class SnapshotTest : public ::testing::Test {
         fetcher_ = std::make_shared<SnapshotTestPropertyFetcher>("_a", std::move(properties));
         IPropertyFetcher::OverrideForTesting(fetcher_);
 
-        if (GetLegacyCompressionEnabledProperty() || CanUseUserspaceSnapshots()) {
+        if (GetLegacyCompressionEnabledProperty()) {
             // If we're asked to test the device's actual configuration, then it
             // may be misconfigured, so check for kernel support as libsnapshot does.
-            if (FLAGS_force_mode.empty()) {
-                snapuserd_required_ = KernelSupportsCompressedSnapshots();
-            } else {
-                snapuserd_required_ = true;
-            }
+            snapuserd_required_ = true;
         }
     }
 
@@ -204,7 +200,7 @@ class SnapshotTest : public ::testing::Test {
         if (FLAGS_force_mode.empty()) {
             return true;
         }
-        if (snapuserd_required_ && !KernelSupportsCompressedSnapshots()) {
+        if (snapuserd_required_) {
             return false;
         }
         return true;
