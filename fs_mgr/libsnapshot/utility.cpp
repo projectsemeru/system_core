@@ -242,21 +242,6 @@ bool GetLegacyCompressionEnabledProperty() {
     return fetcher->GetBoolProperty("ro.virtual_ab.compression.enabled", false);
 }
 
-bool IsVendorFromAndroid12() {
-    auto fetcher = IPropertyFetcher::GetInstance();
-
-    const std::string UNKNOWN = "unknown";
-    const std::string vendor_release =
-            fetcher->GetProperty("ro.vendor.build.version.release_or_codename", UNKNOWN);
-
-    // No user-space snapshots if vendor partition is on Android 12
-    if (vendor_release.find("12") != std::string::npos) {
-        return true;
-    }
-
-    return false;
-}
-
 bool CanUseUserspaceSnapshots() {
     return true;
 }

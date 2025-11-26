@@ -84,17 +84,6 @@ bool KernelSupportsCompressedSnapshots() {
     return dm.GetTargetByName("user", nullptr);
 }
 
-bool IsVendorFromAndroid12() {
-    const std::string UNKNOWN = "unknown";
-    const std::string vendor_release =
-            android::base::GetProperty("ro.vendor.build.version.release_or_codename", UNKNOWN);
-
-    if (vendor_release.find("12") != std::string::npos) {
-        return true;
-    }
-    return false;
-}
-
 bool CanUseUserspaceSnapshots() {
     if (!KernelSupportsCompressedSnapshots()) {
         LOG(ERROR) << "Userspace snapshots requested, but no kernel support is available.";
