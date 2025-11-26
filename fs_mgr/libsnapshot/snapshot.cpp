@@ -5160,6 +5160,7 @@ void SnapshotManager::SetMergeStatsFeatures(ISnapshotMergeStats* stats) {
     stats->report()->set_iouring_used(update_status.io_uring_enabled());
     stats->report()->set_userspace_snapshots_used(update_status.userspace_snapshots());
     stats->report()->set_xor_compression_used(GetXorCompressionEnabledProperty());
+    stats->report()->set_ublk_used(update_status.ublk_snapshots_enabled());
 }
 
 bool SnapshotManager::DeleteDeviceIfExists(const std::string& name,
