@@ -27,6 +27,19 @@ assert_type_eq_all!(libc::pid_t, i32);
 
 /// CGroup related functionality.
 pub mod cgroup {
+    /// Create a cgroup for the specified process
+    pub fn create(uid: libc::uid_t, pid: libc::pid_t) -> Result<(), String> {
+        let err = super::inner::createProcessGroup(uid, pid, false);
+
+        if err >= 0 {
+            Ok(())
+        } else if err == -libc::EROFS {
+            Err("Failed to create process group: Kernel missing support for cgroups".to_owned())
+        } else {
+            Err(format!("Failed to create process group: {}", err))
+        }
+    }
+
     /// Provides the path for an attribute in a specific cgroup
     pub fn get_attribute_path_for_process(
         attr_name: &str,
@@ -98,6 +111,8 @@ mod inner {
             pid: i32,
             path: &mut String,
         ) -> bool;
+
+        fn createProcessGroup(uid: u32, pid: i32, memControl: bool) -> i32;
 
         fn DropTaskProfilesResourceCaching();
 
