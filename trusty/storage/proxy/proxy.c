@@ -210,6 +210,11 @@ static int handle_req(struct storage_msg* msg, const void* req, size_t req_len) 
             rc = checkpointing_get_state(msg, req, req_len, watcher);
             break;
 
+        case STORAGE_READY_FOR_CLIENTS:
+            msg->result = STORAGE_NO_ERROR;
+            rc = ipc_respond(msg, NULL, 0);
+            break;
+
         default:
             ALOGE("unhandled command 0x%x\n", msg->cmd);
             msg->result = STORAGE_ERR_UNIMPLEMENTED;
