@@ -211,10 +211,12 @@ static void Status(const std::string& message) {
     last_start_time = now();
 }
 
-static void Epilog(IFastBootDriver* fb, int status) {
+static void Epilog(IFastBootDriver* fb, int status, bool crash_on_error) {
     if (status) {
         fprintf(stderr, "FAILED (%s)\n", fb->Error().c_str());
-        die("Command failed");
+        if (crash_on_error) {
+            die("Command failed");
+        }
     } else {
         double split = now();
         fprintf(stderr, "OKAY [%7.3fs]\n", (split - last_start_time));
@@ -1221,6 +1223,19 @@ static void copy_avb_footer(const FlashingPlan* fp, const std::string& partition
     }
     buf->fd = std::move(fd);
     buf->sz = partition_size;
+}
+
+void flash_partition(const FlashingPlan* fp, const std::string& partition, SparsePtr sparse_file) {
+    std::vector<SparsePtr> files;
+    if (int limit = get_sparse_limit(sparse_file_len(sparse_file.get(), true, false), fp)) {
+        if (!split_file(sparse_file.get(), limit, &files)) {
+            LOG(FATAL) << "Failed to resparse data for partition " << partition << " sparse limit "
+                       << limit << " bytes";
+        }
+    } else {
+        files.emplace_back(std::move(sparse_file));
+    }
+    flash_partition_files(fp->fb, partition, files);
 }
 
 void flash_partition_files(IFastBootDriver* fb, const std::string& partition,
@@ -2375,7 +2390,8 @@ int FastBootTool::Main(int argc, char* argv[]) {
     }
     fastboot::DriverCallbacks driver_callbacks = {
             .prolog = Status,
-            .epilog = [&fp](int status) { Epilog(fp->fb, status); },
+            .epilog = [&fp](int status,
+                            bool crash_on_error) { Epilog(fp->fb, status, crash_on_error); },
             .info = InfoMessage,
             .text = TextMessage,
     };

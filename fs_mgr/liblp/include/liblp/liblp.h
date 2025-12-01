@@ -126,6 +126,8 @@ std::string GetPartitionSlotSuffix(const std::string& partition_name);
 const LpMetadataPartition* FindPartition(const LpMetadata& metadata, const std::string& name);
 uint64_t GetPartitionSize(const LpMetadata& metadata, const LpMetadataPartition& partition);
 
+bool ParseGeometryFromSuperPartition(const void* buffer, size_t size, LpMetadataGeometry* geometry);
+
 // Parse a super partition image from bytes. Follow the same format as
 // /dev/block/by-name/super , with reserved bytes and backup sections.
 std::unique_ptr<LpMetadata> ParseSuperPartition(const void* buffer, size_t size,

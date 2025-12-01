@@ -511,10 +511,16 @@ Return SnapshotManager::CreateCowImage(LockedFile* lock, const std::string& name
         return Return::Error();
     }
 
+    if (device_->IsRecovery()) {
+        LOG(ERROR) << "Cannot create /data backed snapshots in recovery.";
+        return Return::NoSpace(status.cow_file_size());
+    }
+
     std::string cow_image_name = GetCowImageDeviceName(name);
     int cow_flags = IImageManager::CREATE_IMAGE_DEFAULT;
     return Return(images_->CreateBackingImage(cow_image_name, status.cow_file_size(), cow_flags));
 }
+
 static std::optional<std::string> GetUblkControlDevicePath(const std::string& ublkb_path) {
     if (!android::base::StartsWith(ublkb_path, "/dev/block/ublkb")) {
         return std::nullopt;
@@ -3974,16 +3980,11 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
     std::string vabc_disable_reason;
     if (!dap_metadata.vabc_enabled()) {
         vabc_disable_reason = "not enabled metadata";
-    } else if (device_->IsRecovery()) {
-        vabc_disable_reason = "recovery";
-    } else if (!KernelSupportsCompressedSnapshots()) {
-        vabc_disable_reason = "kernel missing userspace block device support";
     }
-
     // Deduce supported features.
-    bool userspace_snapshots = CanUseUserspaceSnapshots();
+    bool userspace_snapshots = true;
     bool legacy_compression = GetLegacyCompressionEnabledProperty();
-    bool is_legacy_snapuserd = IsVendorFromAndroid12();
+    bool is_legacy_snapuserd = false;
 
     if (!vabc_disable_reason.empty()) {
         if (userspace_snapshots) {
@@ -4007,14 +4008,10 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
         }
     }
 
-    if (!userspace_snapshots && is_legacy_snapuserd && legacy_compression) {
-        userspace_snapshots = true;
-        LOG(INFO) << "Vendor from Android 12. Enabling userspace snapshot for OTA install";
-    }
-
     const bool using_snapuserd = userspace_snapshots || legacy_compression;
     if (!using_snapuserd) {
-        LOG(INFO) << "Using legacy Virtual A/B (dm-snapshot)";
+        LOG(ERROR) << "Using legacy Virtual A/B (dm-snapshot)";
+        return Return::Error();
     }
     auto disable_ublk_through_manifest = false;
     // Disabling UBLK based snapshots can be requested explicitly through manifest.
@@ -5126,6 +5123,7 @@ void SnapshotManager::UpdateCowStats(ISnapshotMergeStats* stats) {
     uint64_t cow_file_size = 0;
     uint64_t total_cow_size = 0;
     uint64_t estimated_cow_size = 0;
+    bool compression_enabled = false;
     for (const auto& snapshot : snapshots) {
         SnapshotStatus status;
         if (!ReadSnapshotStatus(lock.get(), snapshot, &status)) {
@@ -5135,11 +5133,15 @@ void SnapshotManager::UpdateCowStats(ISnapshotMergeStats* stats) {
         cow_file_size += status.cow_file_size();
         total_cow_size += status.cow_file_size() + status.cow_partition_size();
         estimated_cow_size += status.estimated_cow_size();
+        if (!status.compression_algorithm().empty() && status.compression_algorithm() != "none") {
+            compression_enabled = true;
+        }
     }
 
     stats->report()->set_cow_file_size(cow_file_size);
     stats->report()->set_total_cow_size_bytes(total_cow_size);
     stats->report()->set_estimated_cow_size_bytes(estimated_cow_size);
+    stats->report()->set_compression_enabled(compression_enabled);
 }
 
 void SnapshotManager::SetMergeStatsFeatures(ISnapshotMergeStats* stats) {
@@ -5150,6 +5152,7 @@ void SnapshotManager::SetMergeStatsFeatures(ISnapshotMergeStats* stats) {
     stats->report()->set_iouring_used(update_status.io_uring_enabled());
     stats->report()->set_userspace_snapshots_used(update_status.userspace_snapshots());
     stats->report()->set_xor_compression_used(GetXorCompressionEnabledProperty());
+    stats->report()->set_ublk_used(update_status.ublk_snapshots_enabled());
 }
 
 bool SnapshotManager::DeleteDeviceIfExists(const std::string& name,

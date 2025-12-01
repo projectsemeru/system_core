@@ -909,6 +909,7 @@ on post-fs-data
     mkdir /data/ss 0700 system system encryption=Require
 
     mkdir /data/system 0775 system system encryption=Require
+    mkdir /data/system/aiseal 0700 system system
     mkdir /data/system/environ 0700 system system
     # b/183861600 attempt to fix selinux label before running derive_classpath service
     restorecon /data/system/environ
@@ -1013,7 +1014,6 @@ on post-fs-data
     mkdir /data/misc/stats-service/ 0770 statsd system
     mkdir /data/misc/train-info/ 0770 statsd system
 
-    # TODO(b/400439023): Remove once attest modules flagging is removed.
     wait_for_prop apexd.status activated
     # Wait for KeyMints to receive APEX module info before starting code from updateable APEXes.
     # This is to prevent APEX modules from interfering in module measurement.

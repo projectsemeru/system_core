@@ -71,8 +71,6 @@ init_device_sources = [
     "devices.cpp",
     "firmware_handler.cpp",
     "first_stage_console.cpp",
-    "first_stage_init.cpp",
-    "first_stage_mount.cpp",
     "fscrypt_init_extensions.cpp",
     "init.cpp",
     "lmkd_service.cpp",
@@ -332,6 +330,11 @@ cc_binary {
         "libbinder",
         "libutils",
     ],
+    srcs: [
+        "first_stage_init.cpp",
+        "first_stage_mount.cpp",
+        "first_stage_mount_android.cpp",
+    ],
     required: [
         "init_recovery.rc",
         "ueventd.rc.recovery",
@@ -389,7 +392,6 @@ init_first_stage_cc_defaults {
         "reboot_utils.cpp",
         "selabel.cpp",
         "service_utils.cpp",
-        "snapuserd_transition.cpp",
         "switch_root.cpp",
         "uevent_listener.cpp",
         "util.cpp",
@@ -404,24 +406,17 @@ init_first_stage_cc_defaults {
         "libfec_rs",
         "libcrypto_utils",
         "libavb",
-        "liblp",
         "libcutils",
         "libbase",
         "liblog",
         "libcrypto_static",
         "libselinux",
         "libcap",
-        "libgsi",
         "liblzma",
         "libunwindstack_no_dex",
         "libmodprobe",
         "libext2_uuid",
-        "libprotobuf-cpp-lite",
-        "libsnapshot_cow",
-        "liblz4",
-        "libzstd",
-        "libsnapshot_init",
-        "update_metadata-protos",
+        "libz",
         "libprocinfo",
         "libbootloader_message",
     ],
@@ -438,6 +433,7 @@ init_first_stage_cc_defaults {
         "-DALLOW_FIRST_STAGE_CONSOLE=0",
         "-DALLOW_LOCAL_PROP_OVERRIDE=0",
         "-DALLOW_PERMISSIVE_SELINUX=0",
+        "-DFIRST_STAGE_INIT=1",
         "-DREBOOT_BOOTLOADER_ON_PANIC=0",
         "-DWORLD_WRITABLE_KMSG=0",
         "-DDUMP_ON_UMOUNT_FAILURE=0",
@@ -497,6 +493,20 @@ init_first_stage_cc_defaults {
 cc_binary {
     name: "init_first_stage",
     defaults: ["init_first_stage_defaults"],
+    srcs: [
+        "first_stage_mount_android.cpp",
+        "snapuserd_transition.cpp",
+    ],
+    static_libs: [
+        "libgsi",
+        "liblp",
+        "liblz4",
+        "libprotobuf-cpp-lite",
+        "libsnapshot_cow",
+        "libsnapshot_init",
+        "libzstd",
+        "update_metadata-protos",
+    ],
 }
 
 cc_binary {
@@ -504,6 +514,9 @@ cc_binary {
     defaults: [
         "avf_build_flags_cc",
         "init_first_stage_defaults",
+    ],
+    srcs: [
+        "first_stage_mount_microdroid.cpp",
     ],
     cflags: [
         "-DMICRODROID=1",

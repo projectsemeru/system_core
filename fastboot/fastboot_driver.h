@@ -48,7 +48,7 @@ namespace fastboot {
 
 struct DriverCallbacks {
     std::function<void(const std::string&)> prolog = [](const std::string&) {};
-    std::function<void(int)> epilog = [](int) {};
+    std::function<void(int, bool)> epilog = [](int, bool) {};
     std::function<void(const std::string&)> info = [](const std::string&) {};
     std::function<void(const std::string&)> text = [](const std::string&) {};
 };
@@ -138,6 +138,8 @@ class FastBootDriver : public IFastBootDriver {
                      std::vector<std::string>* info = nullptr);
 
   protected:
+    void SetCrashOnError(bool crash) override { crash_on_error_ = crash; }
+    bool GetCrashOnError() const override { return crash_on_error_; }
     RetCode DownloadCommand(uint32_t size, std::string* response = nullptr,
                             std::vector<std::string>* info = nullptr);
     RetCode HandleResponse(std::string* response = nullptr,
@@ -164,10 +166,11 @@ class FastBootDriver : public IFastBootDriver {
 
     std::string error_;
     std::function<void(const std::string&)> prolog_;
-    std::function<void(int)> epilog_;
+    std::function<void(int, bool)> epilog_;
     std::function<void(const std::string&)> info_;
     std::function<void(const std::string&)> text_;
     bool disable_checks_;
+    bool crash_on_error_ = true;
 };
 
 }  // namespace fastboot

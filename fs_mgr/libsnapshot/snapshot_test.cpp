@@ -138,7 +138,6 @@ class SnapshotTest : public ::testing::Test {
         }
 
         SKIP_IF_NON_VIRTUAL_AB();
-        SKIP_IF_VENDOR_ON_ANDROID_S();
 
         SetupProperties();
         if (!DeviceSupportsMode()) {
@@ -172,20 +171,15 @@ class SnapshotTest : public ::testing::Test {
         fetcher_ = std::make_shared<SnapshotTestPropertyFetcher>("_a", std::move(properties));
         IPropertyFetcher::OverrideForTesting(fetcher_);
 
-        if (GetLegacyCompressionEnabledProperty() || CanUseUserspaceSnapshots()) {
+        if (GetLegacyCompressionEnabledProperty()) {
             // If we're asked to test the device's actual configuration, then it
             // may be misconfigured, so check for kernel support as libsnapshot does.
-            if (FLAGS_force_mode.empty()) {
-                snapuserd_required_ = KernelSupportsCompressedSnapshots();
-            } else {
-                snapuserd_required_ = true;
-            }
+            snapuserd_required_ = true;
         }
     }
 
     void TearDown() override {
         RETURN_IF_NON_VIRTUAL_AB();
-        RETURN_IF_VENDOR_ON_ANDROID_S();
 
         LOG(INFO) << "Tearing down SnapshotTest test: " << test_name_;
 
@@ -204,7 +198,7 @@ class SnapshotTest : public ::testing::Test {
         if (FLAGS_force_mode.empty()) {
             return true;
         }
-        if (snapuserd_required_ && !KernelSupportsCompressedSnapshots()) {
+        if (snapuserd_required_) {
             return false;
         }
         return true;
@@ -1064,7 +1058,6 @@ class SnapshotUpdateTest : public SnapshotTest {
   public:
     void SetUp() override {
         SKIP_IF_NON_VIRTUAL_AB();
-        SKIP_IF_VENDOR_ON_ANDROID_S();
 
         SnapshotTest::SetUp();
         if (!image_manager_) {
@@ -1147,7 +1140,6 @@ class SnapshotUpdateTest : public SnapshotTest {
     }
     void TearDown() override {
         RETURN_IF_NON_VIRTUAL_AB();
-        RETURN_IF_VENDOR_ON_ANDROID_S();
 
         LOG(INFO) << "Tearing down SnapshotUpdateTest test: " << test_name_;
 
@@ -3265,7 +3257,6 @@ void SnapshotTestEnvironment::SetUp() {
 
 void SnapshotTestEnvironment::TearDown() {
     RETURN_IF_NON_VIRTUAL_AB();
-    RETURN_IF_VENDOR_ON_ANDROID_S();
 
     if (super_images_ != nullptr) {
         DeleteBackingImage(super_images_.get(), "fake-super");
