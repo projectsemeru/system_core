@@ -329,7 +329,7 @@ static std::optional<std::string> maybe_buffer_corruption(unwindstack::Maps* map
   constexpr char kOverflowMessage[] =
       "possible buffer overflow accessing after secondary allocation";
   constexpr char kUnderflowMessage[] =
-      "possible buffer underflow accessing after secondary allocation";
+      "possible buffer underflow accessing before secondary allocation";
 
   // Look at both the map after and the map before, but use the fault address
   // to figure out which to check first.
