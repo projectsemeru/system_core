@@ -255,13 +255,6 @@ static void DumpPartitions() {
 }
 
 static void DumpUmountDebuggingInfo() {
-    int status;
-    if (!security_getenforce()) {
-        LOG(INFO) << "Run lsof";
-        const char* lsof_argv[] = {"/system/bin/lsof"};
-        logwrap_fork_execvp(arraysize(lsof_argv), lsof_argv, &status, false, LOG_KLOG, true,
-                            nullptr);
-    }
     DumpPartitions();
     // dump current CPU stack traces and uninterruptible tasks
     WriteStringToFile("l", PROC_SYSRQ);
