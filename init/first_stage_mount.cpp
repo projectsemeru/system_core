@@ -61,7 +61,6 @@ using android::fs_mgr::AvbUniquePtr;
 using android::fs_mgr::Fstab;
 using android::fs_mgr::FstabEntry;
 using android::fs_mgr::ReadDefaultFstab;
-using android::fs_mgr::ReadFstabFromDt;
 using android::fs_mgr::SkipMountingPartitions;
 
 using namespace std::literals;

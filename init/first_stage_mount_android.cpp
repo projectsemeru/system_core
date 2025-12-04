@@ -43,16 +43,15 @@ static inline bool IsDtVbmetaCompatible(const Fstab& fstab) {
 
 static Result<Fstab> ReadFirstStageFstabAndroid() {
     Fstab fstab;
-    if (!ReadFstabFromDt(&fstab)) {
-        if (ReadDefaultFstab(&fstab)) {
-            fstab.erase(std::remove_if(fstab.begin(), fstab.end(),
-                                       [](const auto& entry) {
-                                           return !entry.fs_mgr_flags.first_stage_mount;
-                                       }),
-                        fstab.end());
-        } else {
-            return Error() << "failed to read default fstab for first stage mount";
-        }
+
+    if (ReadDefaultFstab(&fstab)) {
+        fstab.erase(std::remove_if(fstab.begin(), fstab.end(),
+                                   [](const auto& entry) {
+                                       return !entry.fs_mgr_flags.first_stage_mount;
+                                   }),
+                    fstab.end());
+    } else {
+        return Error() << "failed to read default fstab for first stage mount";
     }
     return fstab;
 }

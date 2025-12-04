@@ -101,7 +101,6 @@ using Fstab = std::vector<FstabEntry>;
 
 bool ReadFstabFromFile(const std::string& path, Fstab* fstab);
 bool ReadFstabFromProcMounts(Fstab* fstab);
-bool ReadFstabFromDt(Fstab* fstab, bool verbose = true);
 bool ReadDefaultFstab(Fstab* fstab);
 bool SkipMountingPartitions(Fstab* fstab, bool verbose = false);
 
