@@ -585,10 +585,10 @@ static void doLogTemperature(const HealthInfo& props, const char* devPath) {
     char tempstate[12] = {0};
     FILE *fp;
     int ret;
+    int temp = abs(props.batteryTemperatureTenthsCelsius / 10);
 
     snprintf(tempstate, sizeof(tempstate), "0x%x 0x%x", CDD_SYSTEM_DEVICE_TEMP,
-            abs(props.batteryTemperatureTenthsCelsius / 10));
-
+            props.batteryTemperatureTenthsCelsius < 0 ? (temp | 0xF00) : temp);
     fp = fopen(devPath, "w");
     if (fp != NULL) {
         ret = fputs(tempstate, fp);
