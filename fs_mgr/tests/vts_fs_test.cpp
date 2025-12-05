@@ -142,15 +142,6 @@ TEST(fs, PartitionTypes) {
     }
 }
 
-TEST(fs, NoDtFstab) {
-    if (GetVsrLevel() < __ANDROID_API_Q__) {
-        GTEST_SKIP();
-    }
-
-    android::fs_mgr::Fstab fstab;
-    EXPECT_FALSE(android::fs_mgr::ReadFstabFromDt(&fstab, false));
-}
-
 TEST(fs, NoLegacyVerifiedBoot) {
     if (GetVsrLevel() < __ANDROID_API_T__) {
         GTEST_SKIP();
