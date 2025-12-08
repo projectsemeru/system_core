@@ -65,3 +65,9 @@ vintf_fragment {
     src: "android.hardware.gatekeeper-service.trusty.xml",
     vendor: true,
 }
+
+vintf_fragment {
+    name: "android.hardware.gatekeeper-service.security_vm.xml",
+    src: "android.hardware.gatekeeper-service.security_vm.xml",
+    vendor: true,
+}
