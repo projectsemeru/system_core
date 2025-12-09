@@ -25,6 +25,7 @@ rust_bindgen {
     visibility: [
         "//frameworks/proto_logging/stats/stats_log_api_gen",
         "//packages/modules:__subpackages__",
+        "//system/memory/guardian",
     ],
     source_stem: "bindings",
     bindgen_flags: [
