@@ -283,7 +283,7 @@ static enum scsi_result check_scsi_sense(const uint8_t* sense_buf, size_t len) {
     return SCSI_RES_ERR;
 }
 
-static enum scsi_result check_sg_io_hdr(const sg_io_hdr_t* io_hdrp) {
+static enum scsi_result check_sg_io_hdr(const sg_io_hdr_t* io_hdrp, int* const retry_count) {
     if (io_hdrp->status == 0 && io_hdrp->host_status == 0 && io_hdrp->driver_status == 0) {
         return SCSI_RES_OK;
     }
@@ -295,7 +295,13 @@ static enum scsi_result check_sg_io_hdr(const sg_io_hdr_t* io_hdrp) {
     if (io_hdrp->masked_status != GOOD && io_hdrp->sb_len_wr > 0) {
         enum scsi_result scsi_res = check_scsi_sense(io_hdrp->sbp, io_hdrp->sb_len_wr);
         if (scsi_res == SCSI_RES_RETRY) {
-            return SCSI_RES_RETRY;
+            /* Check if we can retry */
+            if (retry_count && *retry_count) {
+                *retry_count -= 1;
+                return SCSI_RES_RETRY;
+            } else {
+                return SCSI_RES_ERR;
+            }
         } else if (scsi_res != SCSI_RES_OK) {
             ALOGE("Unexpected SCSI sense. masked_status: %hhu, host_status: %hu, driver_status: "
                   "%hu\n",
@@ -317,6 +323,7 @@ static enum scsi_result check_sg_io_hdr(const sg_io_hdr_t* io_hdrp) {
     }
 
     if (io_hdrp->host_status == DID_REQUEUE && io_hdrp->driver_status == 0) {
+        /* Don't check the retry_count for a driver soft-failure */
         ALOGW("SG_IO failed with host_status: DID_REQUEUE, retrying\n");
         return SCSI_RES_RETRY;
     }
@@ -442,7 +449,7 @@ static int send_ufs_rpmb_req(int sg_fd, const struct storage_rpmb_send_req* req,
                 ALOGE("%s: ufs ioctl failed: %d, %s\n", __func__, rc, strerror(errno));
                 goto err_op;
             }
-        } while (check_sg_io_hdr(&io_hdr) == SCSI_RES_RETRY && retry_count-- > 0);
+        } while (check_sg_io_hdr(&io_hdr, &retry_count) == SCSI_RES_RETRY);
         write_buf += req->reliable_write_size;
     }
 
@@ -469,23 +476,29 @@ static int send_ufs_rpmb_req(int sg_fd, const struct storage_rpmb_send_req* req,
                 ALOGE("%s: ufs ioctl failed: %d, %s\n", __func__, rc, strerror(errno));
                 goto err_op;
             }
-        } while (check_sg_io_hdr(&io_hdr) == SCSI_RES_RETRY && retry_count-- > 0);
+        } while (check_sg_io_hdr(&io_hdr, &retry_count) == SCSI_RES_RETRY);
         write_buf += req->write_size;
     }
 
     if (req->read_size) {
         /* Prepare SECURITY PROTOCOL IN command. */
-        in_cdb.length = __builtin_bswap32(req->read_size);
         sg_io_hdr_t io_hdr;
-        set_sg_io_hdr(&io_hdr, SG_DXFER_FROM_DEV, sizeof(in_cdb), sizeof(sense_buffer),
-                      req->read_size, read_buf, (unsigned char*)&in_cdb, sense_buffer);
-        watch_progress(watcher, "rpmb ufs read");
-        rc = TEMP_FAILURE_RETRY(ioctl(sg_fd, SG_IO, &io_hdr));
-        watch_progress(watcher, "rpmb ufs read done");
-        if (rc < 0) {
-            ALOGE("%s: ufs ioctl failed: %d, %s\n", __func__, rc, strerror(errno));
-        }
-        check_sg_io_hdr(&io_hdr);
+        /*
+         * No retry for unit attention conditions since this won't be the first
+         * call in the sequence.
+         */
+        int retry_count = 0;
+        do {
+            in_cdb.length = __builtin_bswap32(req->read_size);
+            set_sg_io_hdr(&io_hdr, SG_DXFER_FROM_DEV, sizeof(in_cdb), sizeof(sense_buffer),
+                          req->read_size, read_buf, (unsigned char*)&in_cdb, sense_buffer);
+            watch_progress(watcher, "rpmb ufs read");
+            rc = TEMP_FAILURE_RETRY(ioctl(sg_fd, SG_IO, &io_hdr));
+            watch_progress(watcher, "rpmb ufs read done");
+            if (rc < 0) {
+                ALOGE("%s: ufs ioctl failed: %d, %s\n", __func__, rc, strerror(errno));
+            }
+        } while (check_sg_io_hdr(&io_hdr, &retry_count) == SCSI_RES_RETRY);
     }
 
 err_op:
