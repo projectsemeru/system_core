@@ -1150,16 +1150,16 @@ static Result<void> ExecWithFunctionOnFailure(const std::vector<std::string>& ar
 
 static Result<void> ExecVdcRebootOnFailure(const std::string& vdc_arg) {
     auto reboot_reason = vdc_arg + "_failed";
-    std::string wipe_option = "--prompt_and_wipe_data";
-    // TODO (b/456474148) Change this code to run as a vendor specific extension in recovery,
-    // flag will change to --wipe_data_with_tpm_check
-    if (IsDeviceDesktop() && reboot_reason == "init_user0_failed" && CheckIfTpmCleared()) {
-        wipe_option = "--wipe_data";
-    }
 
-    auto reboot = [reboot_reason, wipe_option](const std::string& message) {
+    auto reboot = [reboot_reason](const std::string& message) {
         // TODO (b/122850122): support this in gsi
         if (IsFbeEnabled() && !android::gsi::IsGsiRunning()) {
+            std::string wipe_option = "--prompt_and_wipe_data";
+            // TODO (b/456474148) Change this code to run as a vendor specific extension in
+            // recovery, flag will change to --wipe_data_with_tpm_check
+            if (IsDeviceDesktop() && reboot_reason == "init_user0_failed" && CheckIfTpmCleared()) {
+                wipe_option = "--wipe_data";
+            }
             // If vdc has failed to mount the initial userdata partition and the gsc keys
             // have been changed, we can perform a factory data reset on behalf of the user
             // automatically.
