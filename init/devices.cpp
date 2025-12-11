@@ -579,7 +579,7 @@ std::vector<std::string> DeviceHandler::GetBlockDeviceSymlinks(const Uevent& uev
     }
 
     std::string model;
-    if (ReadFileToString("/sys/class/block/" + uevent.device_name + "/queue/zoned", &model) &&
+    if (ReadFileToString("/sys/block/" + uevent.device_name + "/queue/zoned", &model) &&
         !StartsWith(model, "none")) {
         links.emplace_back("/dev/block/by-name/zoned_device");
         links.emplace_back("/dev/sys/block/by-name/zoned_device");
@@ -635,7 +635,7 @@ void DeviceHandler::HandleDevice(const std::string& action, const std::string& d
             if (StartsWith(link, "/dev/block/")) {
                 target = devpath;
             } else if (StartsWith(link, "/dev/sys/block/")) {
-                target = "/sys/class/block/" + Basename(devpath);
+                target = "/sys/block/" + Basename(devpath);
             } else {
                 LOG(ERROR) << "Unrecognized link type: " << link;
                 continue;
