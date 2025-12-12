@@ -60,5 +60,9 @@ bool IsSnapuserdReadBatchingEnabled() {
     return com::android::libsnapshot::snapuserd_read_batching();
 }
 
+bool IsMergeWorkerNormalPriorityEnabled() {
+    return com::android::libsnapshot::merge_worker_normal_priority();
+}
+
 }  // namespace snapshot
 }  // namespace android
