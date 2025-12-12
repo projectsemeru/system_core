@@ -28,7 +28,7 @@
 # Assume /dev/block/by-name/userdata is a symlink to /dev/block/USERDATA_BLOCK.
 # - If USERDATA_BLOCK starts with "mmc", then this is eMMC.
 #
-# Assume /sys/class/block/USERDATA_BLOCK is a symlink to FULL_PATH.
+# Assume /sys/block/USERDATA_BLOCK is a symlink to FULL_PATH.
 # - If FULL_PATH contains "/host0/", this is UFS.
 # - Otherwise, this is eMMC.
 #
@@ -160,7 +160,7 @@ function exit_if_userdata_block_is_emmc {
 function check_for_userdata_block_within_host0 {
   # Using globals userdata_block, symlink_path_result
 
-  get_symlink_path "/sys/class/block/${userdata_block}"
+  get_symlink_path "/sys/block/${userdata_block}"
 
   case "${symlink_path_result}" in
     */host0/*)
