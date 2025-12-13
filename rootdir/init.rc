@@ -1152,8 +1152,8 @@ on boot
     # dev.mnt.dev.data=dm-N, dev.mnt.blk.data=sdaN/mmcblk0pN, dev.mnt.rootdisk.data=sda/mmcblk0, or
     # dev.mnt.dev.data=sdaN/mmcblk0pN, dev.mnt.blk.data=sdaN/mmcblk0pN, dev.mnt.rootdisk.data=sda/mmcblk0
     mkdir /dev/sys/block/by-name 0755 system system
-    symlink /sys/class/block/${dev.mnt.dev.data} /dev/sys/block/by-name/userdata
-    symlink /sys/class/block/${dev.mnt.rootdisk.data} /dev/sys/block/by-name/rootdisk
+    symlink /sys/block/${dev.mnt.dev.data} /dev/sys/block/by-name/userdata
+    symlink /sys/block/${dev.mnt.rootdisk.data} /dev/sys/block/by-name/rootdisk
 
     # F2FS tuning. Set cp_interval larger than dirty_expire_centisecs, 30 secs,
     # to avoid power consumption when system becomes mostly idle. Be careful
