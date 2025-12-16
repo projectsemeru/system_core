@@ -20,6 +20,7 @@ use serde::Deserialize;
 use crate::args::DEFAULT_EXIT_ON_ERROR;
 use crate::args::DEFAULT_IO_DEPTH;
 use crate::args::DEFAULT_MAX_FDS;
+use crate::args::DEFAULT_RECORD_METRICS;
 use crate::Error;
 
 /// prefetch-rs
@@ -251,6 +252,13 @@ pub struct ReplayArgs {
     /// file path from where the prefetch config file will be read
     #[argh(option, default = "PathBuf::new()")]
     pub config_path: PathBuf,
+
+    /// enable metric collection for the prefetch replay.
+    ///
+    /// When enabled, metrics are written to a `.stat` file in the same
+    /// location as the input `.pack` file.
+    #[argh(option, default = "DEFAULT_RECORD_METRICS")]
+    pub record_metrics: bool,
 
     #[cfg(target_os = "android")]
     /// store build_finger_print to tie the pack format
