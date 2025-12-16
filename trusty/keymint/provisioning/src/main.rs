@@ -114,7 +114,7 @@ fn try_main() -> Result<()> {
             get_attestation_ids(&provisioning_service)?;
         }
         Action::SetAttestationIds(args) => {
-            set_attestation_ids(&provisioning_service, args.clone())?;
+            set_attestation_ids(&provisioning_service, args)?;
         }
     }
     info!("Completed command successfully: {:?}", cli.action);
@@ -124,7 +124,7 @@ fn try_main() -> Result<()> {
 
 fn set_attestation_ids(
     provisioning_service: &Strong<dyn IProvisioning>,
-    args: Box<AttestationIdsArgs>,
+    args: &AttestationIdsArgs,
 ) -> Result<()> {
     let attest_ids = collect_attestation_ids(args)?;
 
@@ -157,25 +157,31 @@ fn print_attestation_ids(ids: &AttestationIds) {
     println!("}}");
 }
 
-fn collect_attestation_ids(args: Box<AttestationIdsArgs>) -> Result<AttestationIds> {
-    let attest_ids = AttestationIds {
-        brand: args.brand.map_or_else(|| get_prop("ro.product.brand"), |s| Ok(s.into_bytes()))?,
-        device: args
-            .device
-            .map_or_else(|| get_prop("ro.product.device"), |s| Ok(s.into_bytes()))?,
-        product: args
-            .product
-            .map_or_else(|| get_prop("ro.product.name"), |s| Ok(s.into_bytes()))?,
-        serial: args.serial.map_or_else(|| get_prop("ro.serialno"), |s| Ok(s.into_bytes()))?,
-        manufacturer: args
-            .manufacturer
-            .map_or_else(|| get_prop("ro.product.manufacturer"), |s| Ok(s.into_bytes()))?,
-        model: args.model.map_or_else(|| get_prop("ro.product.model"), |s| Ok(s.into_bytes()))?,
-        imei: args.imei.map(|s| s.into_bytes()).unwrap_or_default(),
-        imei2: args.imei2.map(|s| s.into_bytes()).unwrap_or_default(),
-        meid: args.meid.map(|s| s.into_bytes()).unwrap_or_default(),
+fn collect_attestation_ids(args: &AttestationIdsArgs) -> Result<AttestationIds> {
+    // Use CLI arg if present, otherwise fallback to system property
+    let arg_or_prop = |arg: &Option<String>, prop: &str| -> Result<Vec<u8>> {
+        match arg {
+            Some(s) => Ok(s.as_bytes().to_vec()),
+            None => get_prop(prop),
+        }
     };
-    Ok(attest_ids)
+
+    // Use CLI arg if present, otherwise default to empty
+    let arg_or_default = |arg: &Option<String>| -> Vec<u8> {
+        arg.as_ref().map(|s| s.as_bytes().to_vec()).unwrap_or_default()
+    };
+
+    Ok(AttestationIds {
+        brand: arg_or_prop(&args.brand, "ro.product.brand")?,
+        device: arg_or_prop(&args.device, "ro.product.device")?,
+        product: arg_or_prop(&args.product, "ro.product.name")?,
+        serial: arg_or_prop(&args.serial, "ro.serialno")?,
+        manufacturer: arg_or_prop(&args.manufacturer, "ro.product.manufacturer")?,
+        model: arg_or_prop(&args.model, "ro.product.model")?,
+        imei: arg_or_default(&args.imei),
+        imei2: arg_or_default(&args.imei2),
+        meid: arg_or_default(&args.meid),
+    })
 }
 
 fn get_prop(prop_name: &str) -> Result<Vec<u8>> {
