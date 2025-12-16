@@ -18,3 +18,12 @@ flag {
   bug: "364476528"
   is_fixed_read_only: true
 }
+
+flag {
+  name: "merge_worker_normal_priority"
+  is_exported: false
+  namespace: "android_kernel"
+  description: "Merge worker normal priority"
+  bug: "399902322"
+  is_fixed_read_only: true
+}
