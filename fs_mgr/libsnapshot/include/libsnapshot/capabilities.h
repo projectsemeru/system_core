@@ -25,6 +25,9 @@ bool IsUblkEnabled();
 // Returns true if read batching is enabled for snapuserd
 bool IsSnapuserdReadBatchingEnabled();
 
+// Returns true if merge worker normal priority is enabled
+bool IsMergeWorkerNormalPriorityEnabled();
+
 constexpr const char* kSnapuserdModeHintFile = "/metadata/ota/snapuserd_mode";
 constexpr const char* kSnapuserdModeUblk = "ublk";
 constexpr const char* kSnapuserdModeDmUser = "dm-user";

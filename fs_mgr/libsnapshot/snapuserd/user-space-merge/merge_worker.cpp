@@ -18,6 +18,7 @@
 #include <sys/prctl.h>
 
 #include <android-base/properties.h>
+#include <libsnapshot/capabilities.h>
 #include <libsnapshot/cow_format.h>
 
 #include "merge_worker.h"
@@ -611,8 +612,14 @@ bool MergeWorker::Run() {
     if (!snapuserd_->WaitForMergeBegin()) {
         return true;
     }
+
+    int default_priority = ANDROID_PRIORITY_BACKGROUND;
+    if (IsMergeWorkerNormalPriorityEnabled()) {
+        default_priority = ANDROID_PRIORITY_NORMAL;
+    }
+
     auto merge_thread_priority = android::base::GetUintProperty<uint32_t>(
-            "ro.virtual_ab.merge_thread_priority", ANDROID_PRIORITY_BACKGROUND);
+            "ro.virtual_ab.merge_thread_priority", default_priority);
 
     if (!SetThreadPriority(merge_thread_priority)) {
         SNAP_PLOG(ERROR) << "Failed to set thread priority";
