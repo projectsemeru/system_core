@@ -422,6 +422,9 @@ init_first_stage_cc_defaults {
     ],
 
     static_executable: true,
+    ldflags: [
+        "-Wl,--image-base=0x200000",
+    ],
     system_shared_libs: [],
 
     cflags: [
