@@ -24,8 +24,8 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/macros.h>
-#include <android-base/strings.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <modprobe/modprobe.h>
 
 #include <sys/utsname.h>
@@ -147,7 +147,7 @@ static int KernelVersionNameFilter(const dirent* de) {
 
 }  // anonymous namespace
 
-extern "C" int modprobe_main(int argc, char** argv) {
+int main(int argc, char** argv) {
     android::base::InitLogging(argv, MyLogger);
     android::base::SetMinimumLogSeverity(android::base::INFO);
 

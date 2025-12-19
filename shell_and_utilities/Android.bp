@@ -24,6 +24,7 @@ phony {
         "logwrapper",
         "mkfs.exfat",
         "mkshrc",
+        "modprobe",
         "newfs_msdos",
         "reboot",
         "settaskprofile",
@@ -40,6 +41,7 @@ phony {
 phony {
     name: "shell_and_utilities_recovery",
     required: [
+        "modprobe.recovery",
         "sh.recovery",
         "toolbox.recovery",
         "toybox_recovery",
@@ -54,6 +56,7 @@ phony {
         "awk_vendor",
         "logwrapper_vendor",
         "mkshrc_vendor",
+        "modprobe_vendor",
         "sh_vendor",
         "toolbox_vendor",
         "toybox_vendor",
@@ -66,6 +69,7 @@ phony {
 phony {
     name: "shell_and_utilities_vendor_ramdisk",
     required: [
+        "modprobe.vendor_ramdisk",
         "sh.vendor_ramdisk",
         "toybox.vendor_ramdisk",
     ],
