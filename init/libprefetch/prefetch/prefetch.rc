@@ -30,7 +30,7 @@ service prefetch_record /system/bin/prefetch record --duration ${ro.prefetch_boo
     disabled
     oneshot
 
-service prefetch_replay /system/bin/prefetch replay --io-depth ${ro.prefetch_boot.io_depth:-2} --max-fds ${ro.prefetch_boot.max_fds:-1024}
+service prefetch_replay /system/bin/prefetch replay --io-depth ${ro.prefetch_boot.io_depth:-2} --max-fds ${ro.prefetch_boot.max_fds:-1024} --record-metrics true
     user root
     group root system
     disabled
@@ -42,7 +42,7 @@ service prefetch_apex_record /system/bin/prefetch record --duration ${ro.prefetc
     disabled
     oneshot
 
-service prefetch_apex_replay /system/bin/prefetch replay --io-depth ${ro.prefetch_boot.io_depth:-2} --max-fds ${ro.prefetch_boot.max_fds:-1024} --path /metadata/prefetch/prefetch_apex.pack --build-fingerprint-path /metadata/prefetch/apex_build_fingerprint
+service prefetch_apex_replay /system/bin/prefetch replay --io-depth ${ro.prefetch_boot.io_depth:-2} --max-fds ${ro.prefetch_boot.max_fds:-1024} --path /metadata/prefetch/prefetch_apex.pack --build-fingerprint-path /metadata/prefetch/apex_build_fingerprint --record-metrics true
     user root
     group root system
     disabled
