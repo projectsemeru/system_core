@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <functional>
 #include <set>
 #include <string>
 #include <unordered_map>
