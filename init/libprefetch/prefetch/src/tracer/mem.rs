@@ -795,8 +795,8 @@ mod tests {
             copy_uncached_files_and_record_from(Path::new(&test_base_dir), &mut files, &rf);
         let mut mount_include = HashMap::new();
 
-        let included_dev = uncached_files.get(0).unwrap().0.metadata().unwrap().dev();
-        let included_inode1 = uncached_files.get(0).unwrap().0.metadata().unwrap().ino();
+        let included_dev = uncached_files.first().unwrap().0.metadata().unwrap().dev();
+        let included_inode1 = uncached_files.first().unwrap().0.metadata().unwrap().ino();
         let included_inode2 = uncached_files.get(1).unwrap().0.metadata().unwrap().ino();
         let included_major = major(included_dev);
         let included_minor = minor(included_dev);
@@ -883,8 +883,8 @@ mod tests {
             copy_uncached_files_and_record_from(Path::new(&test_base_dir), &mut files, &rf);
         let mut mount_include = HashMap::new();
 
-        let included_dev = uncached_files.get(0).unwrap().0.metadata().unwrap().dev();
-        let included_inode1 = uncached_files.get(0).unwrap().0.metadata().unwrap().ino();
+        let included_dev = uncached_files.first().unwrap().0.metadata().unwrap().dev();
+        let included_inode1 = uncached_files.first().unwrap().0.metadata().unwrap().ino();
         let included_inode2 = uncached_files.get(1).unwrap().0.metadata().unwrap().ino();
         let included_major = major(included_dev);
         let included_minor = minor(included_dev);
@@ -995,8 +995,8 @@ mod tests {
     #[test]
     fn test_mount_info() {
         let mount_info = create_fake_mountinfo(
-            &vec![],
-            &vec![],
+            &[],
+            &[],
             vec![
                 FakeDevice {
                     major: 0 as MajorMinorType,
@@ -1029,8 +1029,8 @@ mod tests {
     #[test]
     fn test_mountinfo_exclude_mount_prefix() {
         let mount_info = create_fake_mountinfo(
-            &vec![String::from("/excluded")],
-            &vec![],
+            &[String::from("/excluded")],
+            &[],
             vec![
                 FakeDevice {
                     major: 0 as MajorMinorType,
@@ -1065,8 +1065,8 @@ mod tests {
     #[test]
     fn test_mountinfo_include_mount_prefix() {
         let mount_info = create_fake_mountinfo(
-            &vec![],
-            &vec![String::from("/included")],
+            &[],
+            &[String::from("/included")],
             vec![
                 FakeDevice {
                     major: 0 as MajorMinorType,
@@ -1100,8 +1100,8 @@ mod tests {
     #[test]
     fn test_mountinfo_mixed_mount_prefix() {
         let mount_info = create_fake_mountinfo(
-            &vec![String::from("/included/excluded")],
-            &vec![String::from("/included")],
+            &[String::from("/included/excluded")],
+            &[String::from("/included")],
             vec![
                 FakeDevice {
                     major: 0 as MajorMinorType,
