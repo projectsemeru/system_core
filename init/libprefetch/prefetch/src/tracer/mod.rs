@@ -53,9 +53,6 @@ use crate::error::Error;
 use crate::{args::TracerType, format::RecordsFile};
 use mem::MemTraceSubsystem;
 
-pub(crate) static EXCLUDE_PATHS: &[&str] =
-    &["/dev/", "/proc/", "/sys/", "/tmp/", "/run/", "/config/", "/mnt/", "/storage/"];
-
 /// During record phase, prefetch may modify files under `/sys/kernel/tracing/` to
 /// - change trace buffer size so that we don't lose trace events
 /// - enable a few trace events

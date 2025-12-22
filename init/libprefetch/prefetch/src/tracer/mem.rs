@@ -37,9 +37,12 @@ use crate::format::{coalesce_records, FsInfo};
 use crate::tracer::{page_size, TracerConfigs};
 use crate::{
     format::{DeviceNumber, InodeNumber},
-    tracer::{TraceSubsystem, EXCLUDE_PATHS},
+    tracer::TraceSubsystem,
     Error, FileId, Record, RecordsFile,
 };
+
+#[cfg(target_os = "android")]
+use crate::EXCLUDE_PATHS;
 
 static MOUNTINFO_PATH: &str = "/proc/self/mountinfo";
 
@@ -428,6 +431,9 @@ pub(crate) struct MemTraceSubsystem {
 
 impl MemTraceSubsystem {
     pub fn update_configs(configs: &mut TracerConfigs) {
+        // TODO(b/475970725): Update or verify EXCLUDE_PATHS when porting to other OSs to ensure
+        // platform-specific virtual filesystems are ignored.
+        #[cfg(target_os = "android")]
         for path in EXCLUDE_PATHS {
             configs.exclude_mount_prefix.push(path.to_owned().to_string());
         }
