@@ -36,7 +36,6 @@
 #include <aidl/android/hardware/health/HealthInfo.h>
 #include <android-base/file.h>
 #include <android-base/parseint.h>
-#include <android-base/result.h>
 #include <android-base/strings.h>
 #include <android/hardware/health/2.1/types.h>
 #include <android/hardware/health/translate-ndk.h>
@@ -361,6 +360,25 @@ static base::Result<T, base::Errno, false> tryGetIntField(const String8& path) {
     return value;
 }
 
+static base::Result<std::optional<std::string>, base::Errno, false> getPrintableStringField(
+        const String8& path) {
+    std::string buf;
+    auto res = readFromFile(path, &buf);
+    if (res.ok()) {
+        std::string sanitized_buf;
+        for (const auto& c : buf) {
+            if (isprint(c)) {
+                sanitized_buf += c;
+            }
+        }
+        return std::optional(sanitized_buf);
+    }
+    if (res.error().code() == ENOENT) {
+        return std::nullopt;
+    }
+    return res.error();
+}
+
 String8 sanitizeSerialNumber(const std::string& serial) {
     String8 sanitized;
     for (const auto& c : serial) {
@@ -517,6 +535,19 @@ void BatteryMonitor::updateValues(void) {
 
     if (readFromFile(mHealthdConfig->chargingStatePath, &buf).ok() && !buf.empty())
         mHealthInfo->chargingState = getBatteryChargingState(buf.c_str());
+
+    if (auto res = getManufacturer(); res.ok() && res->has_value()) {
+        ensureBatteryHealthData(mHealthInfo.get())->batteryManufacturer = **res;
+    }
+
+    if (auto res = getModelName(); res.ok() && res->has_value()) {
+        ensureBatteryHealthData(mHealthInfo.get())->batteryModelName = **res;
+    }
+
+    // Return 0 if voltage_min_design does not exist
+    if (auto res = getVoltageMinDesign(); res.ok()) {
+        ensureBatteryHealthData(mHealthInfo.get())->batteryVoltageMinDesignUv = *res;
+    }
 
     double MaxPower = 0;
 
@@ -775,6 +806,26 @@ status_t BatteryMonitor::getSerialNumber(std::optional<std::string>* out) {
         serialNumber.ok() || serialNumber.error().code() == ENOENT)
         *out = serialNumber.value_or(String8());
     return OK;
+}
+
+base::Result<std::optional<std::string>, base::Errno, false> BatteryMonitor::getManufacturer()
+        const {
+    return getPrintableStringField(mHealthdConfig->batteryManufacturerPath);
+}
+
+base::Result<std::optional<std::string>, base::Errno, false> BatteryMonitor::getModelName() const {
+    return getPrintableStringField(mHealthdConfig->batteryModelNamePath);
+}
+
+base::Result<int64_t, base::Errno, false> BatteryMonitor::getVoltageMinDesign() const {
+    auto res = tryGetIntField<int64_t>(mHealthdConfig->batteryVoltageMinDesignPath);
+    if (res.ok()) {
+        return *res;
+    }
+    if (res.error().code() == ENOENT) {
+        return 0;
+    }
+    return res.error();
 }
 
 void BatteryMonitor::dumpState(int fd) {
@@ -1040,6 +1091,29 @@ void BatteryMonitor::init(struct healthd_config* hc) {
                             mHealthdConfig->batterySerialPath = path;
                     }
 
+                    if (mHealthdConfig->batteryManufacturerPath.empty()) {
+                        path.clear();
+                        path.appendFormat("%s/%s/manufacturer", POWER_SUPPLY_SYSFS_PATH, name);
+                        if (access(path.c_str(), R_OK) == 0) {
+                            mHealthdConfig->batteryManufacturerPath = path;
+                        }
+                    }
+
+                    if (mHealthdConfig->batteryModelNamePath.empty()) {
+                        path.clear();
+                        path.appendFormat("%s/%s/model_name", POWER_SUPPLY_SYSFS_PATH, name);
+                        if (access(path.c_str(), R_OK) == 0)
+                            mHealthdConfig->batteryModelNamePath = path;
+                    }
+
+                    if (mHealthdConfig->batteryVoltageMinDesignPath.empty()) {
+                        path.clear();
+                        path.appendFormat("%s/%s/voltage_min_design", POWER_SUPPLY_SYSFS_PATH,
+                                          name);
+                        if (access(path.c_str(), R_OK) == 0)
+                            mHealthdConfig->batteryVoltageMinDesignPath = path;
+                    }
+
                     break;
 
                 case ANDROID_POWER_SUPPLY_TYPE_UNKNOWN:
@@ -1104,6 +1178,12 @@ void BatteryMonitor::init(struct healthd_config* hc) {
             KLOG_WARNING(LOG_TAG, "chargingPolicyPath not found\n");
         if (mHealthdConfig->batterySerialPath.empty())
             KLOG_WARNING(LOG_TAG, "batterySerialPath not found\n");
+        if (mHealthdConfig->batteryManufacturerPath.empty())
+            KLOG_WARNING(LOG_TAG, "batteryManufacturerPath not found\n");
+        if (mHealthdConfig->batteryModelNamePath.empty())
+            KLOG_WARNING(LOG_TAG, "batteryModelNamePath not found\n");
+        if (mHealthdConfig->batteryVoltageMinDesignPath.empty())
+            KLOG_WARNING(LOG_TAG, "batteryVoltageMinDesignPath not found\n");
     }
 
     if (property_get("ro.boot.fake_battery", pval, NULL) > 0 && strtol(pval, NULL, 10) != 0) {
