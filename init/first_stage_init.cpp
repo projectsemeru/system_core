@@ -134,8 +134,12 @@ void PrepareSwitchRoot() {
     static constexpr const auto& dst = "/first_stage_ramdisk/system/bin/snapuserd";
 
     if (access(dst, X_OK) == 0) {
-        LOG(INFO) << dst << " already exists and it can be executed";
-        return;
+        if (access(snapuserd_ramdisk, X_OK) != 0) {
+            LOG(INFO) << dst << " already exists and it can be executed";
+            return;
+        }
+        LOG(INFO) << "Removing vendor ramdisk copy of snapuserd at " << dst;
+        unlink(dst);
     }
     auto dst_dir = android::base::Dirname(dst);
     std::error_code ec;
