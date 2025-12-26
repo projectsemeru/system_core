@@ -126,13 +126,6 @@ bool FirstStageMount::InitDevices() {
     if (!GetDmVerityDevices(&devices)) {
         return false;
     }
-    if constexpr (com::android::apex::flags::mount_before_data()) {
-        if (!IsMicrodroid()) {
-            // apexd-bootstrap mounts APEXes from the "userdata" partition. Instead of apexd
-            // waiting for ueventd coldboot, let's initialize the userdata early.
-            devices.insert("userdata");
-        }
-    }
     if (!InitRequiredDevices(std::move(devices))) {
         return false;
     }
