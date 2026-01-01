@@ -17,6 +17,7 @@
 #include "first_stage_mount_android.h"
 
 #include <android-base/strings.h>
+#include <com_android_apex_flags.h>
 #include <fs_mgr.h>
 #include <fs_mgr_overlayfs.h>
 #include <libfiemap/image_manager.h>
@@ -41,30 +42,23 @@ static inline bool IsDtVbmetaCompatible(const Fstab& fstab) {
     return is_android_dt_value_expected("vbmeta/compatible", "android,vbmeta");
 }
 
-static Result<Fstab> ReadFirstStageFstabAndroid() {
-    Fstab fstab;
-
-    if (ReadDefaultFstab(&fstab)) {
-        fstab.erase(std::remove_if(fstab.begin(), fstab.end(),
-                                   [](const auto& entry) {
-                                       return !entry.fs_mgr_flags.first_stage_mount;
-                                   }),
-                    fstab.end());
-    } else {
-        return Error() << "failed to read default fstab for first stage mount";
-    }
-    return fstab;
-}
-
-FirstStageMountAndroid::FirstStageMountAndroid(Fstab fstab) : FirstStageMount(std::move(fstab)) {}
+FirstStageMountAndroid::FirstStageMountAndroid(Fstab fstab, bool data_on_userdata)
+    : FirstStageMount(std::move(fstab)), data_on_userdata_(data_on_userdata) {}
 
 Result<std::unique_ptr<FirstStageMount>> FirstStageMount::Create(const std::string& cmdline) {
-    Result<Fstab> fstab = ReadFirstStageFstabAndroid();
-    if (!fstab.ok()) {
-        return fstab.error();
+    Fstab fstab;
+    if (!ReadDefaultFstab(&fstab)) {
+        return Error() << "failed to read default fstab for first stage mount";
     }
 
-    return std::make_unique<FirstStageMountAndroid>(std::move(*fstab));
+    bool data_on_userdata = false;
+    if (auto entry = GetEntryForMountPoint(&fstab, "/data"); entry) {
+        data_on_userdata = entry->blk_device == "/data/block/by-name/userdata";
+    }
+
+    // Select first_stage_mount entries
+    std::erase_if(fstab, [](auto& entry) { return !entry.fs_mgr_flags.first_stage_mount; });
+    return std::make_unique<FirstStageMountAndroid>(std::move(fstab), data_on_userdata);
 }
 
 static bool GetRootEntry(FstabEntry* root_entry) {
@@ -118,6 +112,17 @@ bool FirstStageMountAndroid::DoCreateDevices() {
     if (!CreateLogicalPartitions()) return false;
 
     return true;
+}
+
+void FirstStageMountAndroid::GetExtraBlockDevices(std::set<std::string>* devices) {
+    if constexpr (com::android::apex::flags::mount_before_data()) {
+        // Even before /data is mounted, apexd needs to access the block device backing /data. Let's
+        // initialize "userdata" so that apexd can avoid waiting for the symlink
+        // (/dev/block/by-name/userdata).
+        if (data_on_userdata_) {
+            devices->insert("userdata");
+        }
+    }
 }
 
 bool FirstStageMountAndroid::InitDmLinearBackingDevices(
@@ -321,13 +326,15 @@ void SetInitAvbVersionInRecovery() {
         return;
     }
 
-    auto fstab = ReadFirstStageFstabAndroid();
-    if (!fstab.ok()) {
-        LOG(ERROR) << fstab.error();
+    Fstab fstab;
+    if (!ReadDefaultFstab(&fstab)) {
+        LOG(ERROR) << "failed to read default fstab for first stage mount";
         return;
     }
+    // Select first_stage_mount entries
+    std::erase_if(fstab, [](auto& entry) { return !entry.fs_mgr_flags.first_stage_mount; });
 
-    if (!IsDtVbmetaCompatible(*fstab)) {
+    if (!IsDtVbmetaCompatible(fstab)) {
         LOG(INFO) << "Skipped setting INIT_AVB_VERSION (not vbmeta compatible)";
         return;
     }
@@ -337,7 +344,7 @@ void SetInitAvbVersionInRecovery() {
     // We only set INIT_AVB_VERSION when the AVB verification succeeds, i.e., the
     // Open() function returns a valid handle.
     // We don't need to mount partitions here in recovery mode.
-    FirstStageMount avb_first_mount(std::move(*fstab));
+    FirstStageMount avb_first_mount(std::move(fstab));
     if (!avb_first_mount.InitDevices()) {
         LOG(ERROR) << "Failed to init devices for INIT_AVB_VERSION";
         return;

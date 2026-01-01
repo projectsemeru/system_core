@@ -27,7 +27,7 @@ class FirstStageMountAndroid final : public FirstStageMount {
     using SnapshotManager = android::snapshot::SnapshotManager;
 
   public:
-    FirstStageMountAndroid(Fstab fstab);
+    FirstStageMountAndroid(Fstab fstab, bool data_on_userdata);
 
     bool DoCreateDevices() override;
 
@@ -36,6 +36,7 @@ class FirstStageMountAndroid final : public FirstStageMount {
     void UseDsuIfPresent() override;
     void SaveRamdiskPathToSnapuserd() override;
     bool AllowVerityCheckAtMostOnce() override { return dsu_not_on_userdata_; }
+    void GetExtraBlockDevices(std::set<std::string>* devices) override;
 
   private:
     bool CreateLogicalPartitions();
@@ -48,6 +49,7 @@ class FirstStageMountAndroid final : public FirstStageMount {
 
     bool dsu_not_on_userdata_ = false;
     bool use_snapuserd_ = false;
+    bool data_on_userdata_ = false;
 };
 
 }  // namespace init
