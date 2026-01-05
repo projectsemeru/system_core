@@ -90,8 +90,9 @@ vintf_fragment {
     vendor: true,
 }
 
-vintf_fragment {
+prebuilt_etc {
     name: "android.hardware.gatekeeper-service.security_vm.xml",
     src: "android.hardware.gatekeeper-service.security_vm.xml",
     vendor: true,
+    sub_dir: "vintf",
 }
