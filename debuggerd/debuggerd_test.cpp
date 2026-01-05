@@ -26,6 +26,7 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/auxv.h>
 #include <sys/capability.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
@@ -2765,7 +2766,7 @@ TEST_F(CrasherTest, fault_address_between_maps) {
   ASSERT_MATCH(result, R"(\nmemory map \(.*\): \(fault address prefixed with --->\)\n)");
 
   match_str = android::base::StringPrintf(
-      R"(    %s.*\n--->Fault address falls at %s between mapped regions\n    %s)",
+      R"(    %s.*\n\s*VmFlags:.*\n--->Fault address falls at %s between mapped regions\n    %s)",
       format_pointer(start_ptr).c_str(), format_pointer(middle_ptr).c_str(),
       format_pointer(end_ptr).c_str());
   ASSERT_MATCH(result, match_str);
@@ -3024,6 +3025,93 @@ TEST_F(CrasherTest, verify_map_format) {
       format_map_pointer(reinterpret_cast<uintptr_t>(file_map) + 0x3fff).c_str(), tf.path);
   ASSERT_MATCH(result, match_str);
 }
+
+#if defined(__aarch64__)
+
+void verify_map_format(CrasherTest* test, bool enable_seccomp, uint32_t flags) {
+  std::string vmflags;
+  if ((flags & PROT_BTI) != 0) {
+    unsigned long hwcap2 = getauxval(AT_HWCAP2);
+    if ((hwcap2 & HWCAP2_BTI) == 0) {
+      GTEST_SKIP() << "Requires BTI";
+    }
+    vmflags = R"( bt\b)";
+  }
+  if ((flags & PROT_MTE) != 0) {
+    if (!mte_supported() && !mte_enabled()) {
+      GTEST_SKIP() << "Requires MTE";
+    }
+    vmflags = R"( mt\b)";
+  }
+
+  // Create the maps like so:
+  //   0 - empty page
+  //   1 - normal read/write page
+  //   2 - flags read/write page
+  //   3 - empty page.
+  // The empty pages are to make sure that maps aren't merged so that
+  // a single map entry for normal and mte pages is in the maps list.
+  int pagesize = getpagesize();
+  uint8_t* map = reinterpret_cast<uint8_t*>(
+      mmap(nullptr, 4 * pagesize, 0, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
+  ASSERT_NE(MAP_FAILED, map);
+
+  void* normal_map = mmap(&map[pagesize], pagesize, PROT_READ | PROT_WRITE,
+                          MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
+  ASSERT_NE(MAP_FAILED, normal_map);
+  ASSERT_EQ(normal_map, &map[pagesize]);
+  void* flags_map = mmap(&map[2 * pagesize], pagesize, PROT_READ | PROT_WRITE | flags,
+                         MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0);
+  ASSERT_NE(MAP_FAILED, flags_map);
+  ASSERT_EQ(flags_map, &map[2 * pagesize]);
+
+  if (enable_seccomp) {
+    test->StartProcess([]() { abort(); }, &seccomp_fork);
+  } else {
+    test->StartProcess([]() { abort(); });
+  }
+
+  ASSERT_EQ(0, munmap(map, 4 * pagesize));
+
+  unique_fd output_fd;
+  test->StartIntercept(&output_fd);
+  test->FinishCrasher();
+  test->AssertDeath(SIGABRT);
+  ASSERT_NO_FATAL_FAILURE(test->FinishIntercept());
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+  // Find the normal map.
+  std::string match_str = android::base::StringPrintf(
+      R"(    %s-%s rw-         0      %x.*\n)",
+      format_map_pointer(reinterpret_cast<uintptr_t>(normal_map)).c_str(),
+      format_map_pointer(reinterpret_cast<uintptr_t>(normal_map) + pagesize - 1).c_str(), pagesize);
+  ASSERT_MATCH(result, match_str);
+  match_str = android::base::StringPrintf(
+      R"(    %s-%s rw-         0      %x.*\n\s*VmFlags:.*%s)",
+      format_map_pointer(reinterpret_cast<uintptr_t>(flags_map)).c_str(),
+      format_map_pointer(reinterpret_cast<uintptr_t>(flags_map) + pagesize - 1).c_str(), pagesize,
+      vmflags.c_str());
+  ASSERT_MATCH(result, match_str);
+}
+
+TEST_F(CrasherTest, verify_mte_map_format) {
+  verify_map_format(this, /*enable_seccomp*/ false, PROT_MTE);
+}
+
+TEST_F(CrasherTest, verify_mte_map_format_seccomp) {
+  verify_map_format(this, /*enable_seccomp*/ true, PROT_MTE);
+}
+
+TEST_F(CrasherTest, verify_bti_map_format) {
+  verify_map_format(this, /*enable_seccomp*/ false, PROT_BTI);
+}
+
+TEST_F(CrasherTest, verify_bti_map_format_seccomp) {
+  verify_map_format(this, /*enable_seccomp*/ true, PROT_BTI);
+}
+
+#endif
 
 // Verify that the tombstone map data is correct.
 TEST_F(CrasherTest, verify_header) {

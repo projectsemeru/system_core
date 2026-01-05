@@ -38,8 +38,8 @@
 #include <map>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -721,6 +721,7 @@ static void dump_thread(Tombstone* tombstone, unwindstack::AndroidUnwinder* unwi
 }
 
 static void dump_mappings(Tombstone* tombstone, unwindstack::Maps* maps,
+                          const std::unordered_map<uint64_t, std::string>& vmflags,
                           std::shared_ptr<unwindstack::Memory>& process_memory) {
   for (const auto& map_info : *maps) {
     auto* map = tombstone->add_memory_mappings();
@@ -736,6 +737,10 @@ static void dump_mappings(Tombstone* tombstone, unwindstack::Maps* maps,
     }
     if (map_info->flags() & PROT_EXEC) {
       map->set_execute(true);
+    }
+    auto entry = vmflags.find(map_info->start());
+    if (entry != vmflags.end()) {
+      map->set_vmflags(entry->second);
     }
 
     map->set_mapping_name(map_info->name());
@@ -895,6 +900,7 @@ static void dump_tags_around_fault_addr(Signal* signal, const Tombstone& tombsto
 }
 
 void engrave_tombstone_proto(Tombstone* tombstone, unwindstack::AndroidUnwinder* unwinder,
+                             const std::unordered_map<uint64_t, std::string>& vmflags,
                              const std::map<pid_t, ThreadInfo>& threads, pid_t target_tid,
                              const ProcessInfo& process_info, const OpenFilesList* open_files,
                              const Architecture* guest_arch,
@@ -984,7 +990,7 @@ void engrave_tombstone_proto(Tombstone* tombstone, unwindstack::AndroidUnwinder*
 
   dump_probable_cause(&result, unwinder, process_info, target_thread, threads);
 
-  dump_mappings(&result, unwinder->GetMaps(), unwinder->GetProcessMemory());
+  dump_mappings(&result, unwinder->GetMaps(), vmflags, unwinder->GetProcessMemory());
 
   // Only dump logs on debuggable devices.
   if (android::base::GetBoolProperty("ro.debuggable", false)) {

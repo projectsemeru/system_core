@@ -227,12 +227,13 @@ message MemoryMapping {
   bool read = 4;
   bool write = 5;
   bool execute = 6;
+  string vmflags = 10;
 
   string mapping_name = 7;
   string build_id = 8;
   uint64 load_bias = 9;
 
-  reserved 10 to 999;
+  reserved 11 to 999;
 }
 
 message FD {
