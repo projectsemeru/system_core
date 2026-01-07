@@ -51,7 +51,6 @@
 #include <bionic/tls_defines.h>
 #include <cutils/sockets.h>
 #include <log/log.h>
-#include <private/android_filesystem_config.h>
 #include <procinfo/process.h>
 
 #define ATRACE_TAG ATRACE_TAG_BIONIC
