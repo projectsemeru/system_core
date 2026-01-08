@@ -306,7 +306,7 @@ SetCgroupAction::SetCgroupAction(const CgroupControllerWrapper& c, const std::st
 
 bool SetCgroupAction::AddTidToCgroup(pid_t tid, int fd, ResourceCacheType cache_type) const {
     if (tid <= 0) {
-        return true;
+        return false;
     }
 
     std::string value = std::to_string(tid);
