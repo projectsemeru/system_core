@@ -67,20 +67,11 @@ std::optional<bool> isMemcgV2Enabled() {
     return std::nullopt;
 }
 
-std::optional<bool> checkRootSubtreeState() {
-    if (std::string controllers;
-        ReadFileToString(CGROUP_V2_ROOT_PATH + "/cgroup.subtree_control", &controllers)) {
-        return controllers.find("memory") != std::string::npos;
-    }
-    std::cerr << "Error: Could not read " << CGROUP_V2_ROOT_PATH
-              << "/cgroup.subtree_control: " << std::strerror(errno) << std::endl;
-    return std::nullopt;
-}
 
 }  // anonymous namespace
 
 class MemcgV2SubdirTest : public testing::Test {
-  protected:
+protected:
     std::optional<std::string> mRandDir;
 
     void SetUp() override {
@@ -127,7 +118,17 @@ class MemcgV2SubdirTest : public testing::Test {
         }
     }
 
-  private:
+private:
+    static std::optional<bool> checkRootSubtreeState() {
+        if (std::string controllers;
+            ReadFileToString(CGROUP_V2_ROOT_PATH + "/cgroup.subtree_control", &controllers)) {
+            return controllers.find("memory") != std::string::npos;
+        }
+        std::cerr << "Error: Could not read " << CGROUP_V2_ROOT_PATH
+                  << "/cgroup.subtree_control: " << std::strerror(errno) << std::endl;
+        return std::nullopt;
+    }
+
     std::optional<bool> mRootSubtreeState;
 };
 
