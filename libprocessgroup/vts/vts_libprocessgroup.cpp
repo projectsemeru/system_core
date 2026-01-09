@@ -25,9 +25,14 @@
 
 #include <android-base/file.h>
 #include <android-base/strings.h>
+#include <vintf/VintfObject.h>
+
 using android::base::ReadFileToString;
 using android::base::Split;
 using android::base::WriteStringToFile;
+using android::vintf::KernelVersion;
+using android::vintf::RuntimeInfo;
+using android::vintf::VintfObject;
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -136,4 +141,23 @@ private:
 TEST_F(MemcgV2SubdirTest, CanActivateMemcgV2Subtree) {
     ASSERT_TRUE(WriteStringToFile("+memory", *mRandDir + "/cgroup.subtree_control"))
             << "Could not enable memcg under child cgroup subtree";
+}
+
+TEST(MemcgV2, memcg_v2_enabled) {
+    KernelVersion first_required_kernel_version = KernelVersion(6, 1, 0);
+    KernelVersion kernel_version = VintfObject::GetInstance()
+                                           ->getRuntimeInfo(RuntimeInfo::FetchFlag::CPU_VERSION)
+                                           ->kernelVersion();
+    if (kernel_version < first_required_kernel_version) {
+        GTEST_SKIP();
+    }
+
+    int FIRST_REQUIRED_ANDROID_API_LEVEL = 37; // Android 17 / 26Q2
+    if (android_get_device_api_level() < FIRST_REQUIRED_ANDROID_API_LEVEL) {
+        GTEST_SKIP();
+    }
+
+    ASSERT_TRUE(isMemcgV2Enabled().value_or(false))
+        << "[GMS-VSR-3.4.9-001] requires Android 17 devices running kernels 6.1 or newer to have "
+        << "memcg v2 enabled.";
 }
