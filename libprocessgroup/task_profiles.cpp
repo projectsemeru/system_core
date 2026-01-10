@@ -306,7 +306,7 @@ SetCgroupAction::SetCgroupAction(const CgroupControllerWrapper& c, const std::st
 
 bool SetCgroupAction::AddTidToCgroup(pid_t tid, int fd, ResourceCacheType cache_type) const {
     if (tid <= 0) {
-        return true;
+        return false;
     }
 
     std::string value = std::to_string(tid);
@@ -343,8 +343,18 @@ bool SetCgroupAction::AddTidToCgroup(pid_t tid, int fd, ResourceCacheType cache_
 
 ProfileAction::CacheUseResult SetCgroupAction::UseCachedFd(ResourceCacheType cache_type,
                                                            int id) const {
+    if (cache_type < RCT_TASK || cache_type >= RCT_COUNT) {
+        LOG(ERROR) << "Invalid cache_type " << cache_type;
+        return ProfileAction::FAIL;
+    }
+
     std::lock_guard<std::mutex> lock(fd_mutex_);
     if (FdCacheHelper::IsCached(fd_[cache_type])) {
+        if (int fd = fd_[cache_type]; fcntl(fd, F_GETFD) == -1) {
+            PLOG(ERROR) << "FD (" << fd << ") is invalid for cache_type " << cache_type;
+            return ProfileAction::FAIL;
+        }
+
         // fd is cached, reuse it
         if (!AddTidToCgroup(id, fd_[cache_type], cache_type)) {
             LOG(ERROR) << "Failed to add task into cgroup";
