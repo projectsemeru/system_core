@@ -40,18 +40,11 @@ PRODUCT_PACKAGES += \
 	$(LOCAL_SECRETKEEPER_PRODUCT_PACKAGE) \
 	trusty_apploader \
 
-# Choose the legacy trusty gatekeeper implementation
-GATEKEEPER_PACKAGE := android.hardware.gatekeeper-service.trusty
-
-# Choose gatekeeper from security_vm only if keymint vendor select is enabled
-# TODO(b/457408434): Revisit once gatekeeper core logic is stable
-ifeq ($(KEYMINT_HAL_VENDOR_APEX_SELECT),true)
-	ifeq ($(GATEKEEPER_HAL_VENDOR_FROM_SECURITY_VM_SELECT),true)
-		GATEKEEPER_PACKAGE := android.hardware.gatekeeper-service.security_vm.xml
-	endif
+ifeq ($(GATEKEEPER_HAL_VENDOR_APEX_SELECT), true)
+    PRODUCT_PACKAGES += android.hardware.gatekeeper-service.trusty_tee
+else
+    PRODUCT_PACKAGES += android.hardware.gatekeeper-service.trusty
 endif
-
-PRODUCT_PACKAGES += $(GATEKEEPER_PACKAGE)
 
 PRODUCT_PROPERTY_OVERRIDES += \
 	ro.hardware.keystore_desede=true \
