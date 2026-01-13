@@ -175,7 +175,7 @@ const HealthInfo& BatteryMonitor::getHealthInfo() const {
 static base::Result<int, base::Errno, false> readFromFile(const String8& path, std::string* buf) {
     buf->clear();
 
-    if (path.empty()) return base::Errno(ENOENT);
+    if (path.empty()) return base::ResultError<base::Errno, false>(ENOENT);
 
     if (android::base::ReadFileToString(path.c_str(), buf)) {
         *buf = android::base::Trim(*buf);
