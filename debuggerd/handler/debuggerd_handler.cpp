@@ -342,8 +342,7 @@ static bool have_siginfo(int signum) {
 
 static void raise_caps() {
   // Raise CapInh to match CapPrm, so that we can set the ambient bits.
-  __user_cap_header_struct capheader;
-  memset(&capheader, 0, sizeof(capheader));
+  __user_cap_header_struct capheader = {};
   capheader.version = _LINUX_CAPABILITY_VERSION_3;
   capheader.pid = 0;
 
@@ -672,7 +671,6 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
 
   struct siginfo dummy_info = {};
   if (!info) {
-    memset(&dummy_info, 0, sizeof(dummy_info));
     dummy_info.si_signo = signal_number;
     dummy_info.si_code = SI_USER;
     dummy_info.si_pid = __getpid();
@@ -910,11 +908,9 @@ void debuggerd_init(debuggerd_callbacks_t* callbacks) {
   stack -= 15;
   pseudothread_stack = stack;
 
-  struct sigaction action;
-  memset(&action, 0, sizeof(action));
+  struct sigaction action = {.sa_sigaction = debuggerd_signal_handler,
+                             .sa_flags = SA_RESTART | SA_SIGINFO};
   sigfillset(&action.sa_mask);
-  action.sa_sigaction = debuggerd_signal_handler;
-  action.sa_flags = SA_RESTART | SA_SIGINFO;
 
   // Use the alternate signal stack if available so we can catch stack overflows.
   action.sa_flags |= SA_ONSTACK;
