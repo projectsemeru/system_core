@@ -27,6 +27,7 @@ rust_bindgen {
         "//frameworks/proto_logging/stats/stats_log_api_gen",
         "//packages/modules:__subpackages__",
         "//system/memory/guardian",
+        "//system/zygote/zygote/libs/statslog",
     ],
     source_stem: "bindings",
     bindgen_flags: [
