@@ -442,7 +442,7 @@ pub mod tests {
     static KB: u64 = 1024;
 
     fn random_write(file: &mut NamedTempFile, base: u64) -> Range<u64> {
-        let start: u64 = base + (rand::random::<u64>() % (base / 2)) as u64;
+        let start: u64 = base + (rand::random::<u64>() % (base / 2));
         let len: u64 = rand::random::<u64>() % (32 * KB);
         let buf = vec![5; len as usize];
         nix::sys::uio::pwrite(file.as_fd(), &buf, start as i64).unwrap();
@@ -462,9 +462,9 @@ pub mod tests {
         let range2 = random_write(&mut file, 128 * KB);
         let range3 = random_write(&mut file, 4 * MB);
         if let Some(align) = align {
-            let orig_size = file.metadata().unwrap().len();
+            let orig_size = file.as_file().metadata().unwrap().len();
             let aligned_size = orig_size + (align - (orig_size % align));
-            file.set_len(aligned_size).unwrap();
+            file.as_file().set_len(aligned_size).unwrap();
         }
         (file, vec![range1, range2, range3])
     }
@@ -605,7 +605,7 @@ pub mod tests {
         /// Construct the "Record" file based on pages resident in RAM.
         pub(crate) fn get_records(&self, records: &mut Vec<Record>) -> Result<(), Error> {
             let page_size = page_size()?;
-            let page_count = (self.length + page_size - 1) / page_size;
+            let page_count = self.length.div_ceil(page_size);
             let mut buf: Vec<u8> = vec![0_u8; page_count];
             // SAFETY: This is safe because
             // - the file is mapped
@@ -663,12 +663,7 @@ pub mod tests {
                 nix::sys::mman::munmap(NonNull::new(self.map_addr).unwrap(), self.length)
             };
             if let Err(e) = ret {
-                error!(
-                    "failed to munmap {:p} {} with {}",
-                    self.map_addr,
-                    self.length,
-                    e.to_string()
-                );
+                error!("failed to munmap {:p} {} with {}", self.map_addr, self.length, e);
             }
         }
     }
@@ -871,7 +866,7 @@ pub mod tests {
 
         // 4. Verify the metrics from the .stat file.
         let stat_content = std::fs::read_to_string(&stat_path)
-            .expect(&format!("Failed to read stat file at {:?}", stat_path));
+            .unwrap_or_else(|_| panic!("Failed to read stat file at {:?}", stat_path));
 
         let mut actual_metrics = HashMap::new();
         for line in stat_content.lines() {

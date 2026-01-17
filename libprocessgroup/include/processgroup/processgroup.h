@@ -54,6 +54,7 @@ bool SetProcessProfiles(uid_t uid, pid_t pid, std::span<const std::string_view> 
 
 bool SetProcessProfilesCached(uid_t uid, pid_t pid, const std::vector<std::string>& profiles);
 
+[[deprecated("Unsupported in memcg v2")]]
 bool UsePerAppMemcg();
 
 // Drop the fd cache of cgroup path. It is used for when resource caching is enabled and a process

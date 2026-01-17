@@ -11,6 +11,11 @@ use rustutils::android::system_properties::PropertyWatcher;
 
 const PREFETCH_RECORD_PROPERTY_STOP: &str = "prefetch_boot.record_stop";
 
+/// Directory prefixes for virtual or temporary filesystems to be ignored during prefetch
+/// recording and replaying.
+pub static EXCLUDE_PATHS: &[&str] =
+    &["/dev/", "/proc/", "/sys/", "/tmp/", "/run/", "/config/", "/mnt/", "/storage/"];
+
 fn is_prefetch_enabled() -> Result<bool, Error> {
     rustutils::android::system_properties::read_bool("ro.prefetch_boot.enabled", false).map_err(
         |e| Error::Custom { error: format!("Failed to read ro.prefetch_boot.enabled: {e}") },
