@@ -39,7 +39,7 @@ struct CommServiceChannel {
 }
 
 impl SerializedChannel for CommServiceChannel {
-    const MAX_SIZE: usize = 4000;
+    const MAX_SIZE: usize = 8192;
     fn execute(&mut self, serialized_req: &[u8]) -> binder::Result<Vec<u8>> {
         self.comm_service.execute_transact(serialized_req)
     }
