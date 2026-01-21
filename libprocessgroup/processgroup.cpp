@@ -428,7 +428,7 @@ bool sendSignalToProcessGroup(uid_t uid, pid_t initialPid, int signal) {
                 return true;
             } else {
                 PLOG(ERROR) << "Failed to write 1 to " << killfilepath;
-                // Fallback to cgroup.procs below
+                return false;
             }
         }
 
