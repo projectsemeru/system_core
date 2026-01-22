@@ -211,7 +211,10 @@ libinit_cc_defaults {
         "libutils",
         "libvendorsupport",
     ],
-    header_libs: ["bionic_libc_platform_headers"],
+    header_libs: [
+        "bionic_libc_platform_headers",
+        "libupdate_engine_headers",
+    ],
     bootstrap: true,
     visibility: [":__subpackages__"],
 }
@@ -419,6 +422,10 @@ init_first_stage_cc_defaults {
         "libz",
         "libprocinfo",
         "libbootloader_message",
+    ],
+
+    header_libs: [
+        "libupdate_engine_headers",
     ],
 
     static_executable: true,
