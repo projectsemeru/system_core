@@ -22,16 +22,25 @@ use binder::{self, AccessorProvider, Strong};
 use clap::{Args, Parser, Subcommand};
 use log::{error, info, LevelFilter};
 use rustutils::android::system_properties;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 const ACCESSOR_SERVICE_NAME: &str = "android.os.IAccessor/IProvisioning/security_vm_keymint";
 const INTERNAL_RPC_SERVICE_NAME: &str =
     "android.trusty.provisioning.IProvisioning/security_vm_keymint";
+const HOST_UDS_CERTS_PATH: &str = "/mnt/vendor/persist/uds_certs";
 
 #[derive(Parser, Debug)]
 #[clap(about = "KeyMint provisioning tool")]
 struct Cli {
     #[clap(subcommand)]
     action: Action,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum UdsCertsTarget {
+    /// Provision UDS certificates to the host's persistent storage.
+    Host,
 }
 
 #[derive(Subcommand, Debug, Clone)]
@@ -43,6 +52,21 @@ enum Action {
     /// Provisions attestation IDs to the KeyMint.
     #[clap(visible_alias = "set-attestation-ids")]
     SetAttestationIds(Box<AttestationIdsArgs>),
+
+    /// Appends UDS certificate chains.
+    #[clap(visible_alias = "append-uds-certs")]
+    AppendUdsCerts(AppendUdsCertsArgs),
+}
+
+#[derive(Args, Clone, Debug)]
+struct AppendUdsCertsArgs {
+    /// Path to the UDS certificate chain file to provision.
+    #[arg(value_hint = clap::ValueHint::FilePath)]
+    input_file: PathBuf,
+
+    /// The target for provisioning the UDS certificates.
+    #[arg(long, value_enum)]
+    target: UdsCertsTarget,
 }
 
 #[derive(Args, Clone, Debug, Default)]
@@ -116,9 +140,40 @@ fn try_main() -> Result<()> {
         Action::SetAttestationIds(args) => {
             set_attestation_ids(&provisioning_service, args)?;
         }
+        Action::AppendUdsCerts(args) => {
+            append_uds_certs(args)?;
+        }
     }
     info!("Completed command successfully: {:?}", cli.action);
 
+    Ok(())
+}
+
+// TODO(b/467901773): Implement append logic. This currently overwrites the file.
+fn append_uds_certs(args: &AppendUdsCertsArgs) -> Result<()> {
+    let content = fs::read(&args.input_file)
+        .with_context(|| format!("Failed to read input file from {}", args.input_file.display()))?;
+
+    match args.target {
+        UdsCertsTarget::Host => {
+            let dest_path = Path::new(HOST_UDS_CERTS_PATH);
+
+            if let Some(parent_dir) = dest_path.parent() {
+                fs::create_dir_all(parent_dir).with_context(|| {
+                    format!("Failed to create parent directory {}", parent_dir.display())
+                })?;
+            }
+
+            fs::write(dest_path, &content).with_context(|| {
+                format!("Failed to write to destination file {}", dest_path.display())
+            })?;
+
+            info!(
+                "Successfully wrote UDS certs to host persistent storage at {}",
+                dest_path.display()
+            );
+        }
+    }
     Ok(())
 }
 
