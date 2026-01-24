@@ -132,6 +132,9 @@ cc_defaults {
         "-DANDROID_BASE_UNIQUE_FD_DISABLE_IMPLICIT_CONVERSION",
         "-Wthread-safety",
     ],
+    header_libs: [
+        "libupdate_engine_headers",
+    ],
     rtti: true,
 
 }
