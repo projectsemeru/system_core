@@ -743,10 +743,12 @@ status_t BatteryMonitor::getProperty(int id, struct BatteryProperty* val) {
 
     auto readIntProp = [&](const String8& path) {
         auto res = tryGetIntField(path);
-        if (res.ok() || res.error().code() == ENOENT) {
+        if (res.ok()) {
             val->valueInt64 = res.value_or(0);
             ret = OK;
         } else {
+            // If tryGetIntField failed for any reason (e.g., unsupported property, read error),
+            // return NAME_NOT_FOUND.
             ret = NAME_NOT_FOUND;
         }
     };
