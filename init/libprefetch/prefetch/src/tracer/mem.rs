@@ -780,8 +780,8 @@ mod tests {
             let found = TraceLineInfo::from_trace_line(&re, line).unwrap();
             let expected = res.get(index).unwrap();
             assert_eq!(found.is_some(), expected.is_some());
-            if found.is_some() {
-                assert_eq!(found.unwrap(), *expected.as_ref().unwrap());
+            if let Some(x) = found {
+                assert_eq!(x, *expected.as_ref().unwrap());
             }
         }
     }
