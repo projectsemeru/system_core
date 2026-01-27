@@ -109,10 +109,8 @@ void LaunchFirstStageSnapuserd(bool use_ublk) {
     if (!client) {
         LOG(FATAL) << "Could not connect to first-stage snapuserd";
     }
-    if (client->SupportsSecondStageSocketHandoff()) {
-        setenv(kSnapuserdFirstStageInfoVar, "socket", 1);
-    }
 
+    setenv(kSnapuserdFirstStageInfoVar, "socket", 1);
     setenv(kSnapuserdFirstStagePidVar, std::to_string(pid).c_str(), 1);
 
     if (!client->RemoveTransitionedDaemonIndicator()) {
