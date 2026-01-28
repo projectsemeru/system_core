@@ -30,7 +30,7 @@ rust_defaults {
     prefer_rlib: true,
 }
 
-// keymint hal binary for keymint in Trusty TEE (legacy approach not using apex)
+// KeyMint HAL service for KeyMint in Trusty TEE (legacy approach not using apex)
 rust_binary {
     name: "android.hardware.security.keymint-service.rust.trusty",
     srcs: [
@@ -39,15 +39,27 @@ rust_binary {
     vendor: true,
     defaults: ["android.hardware.security.keymint-service.rust.trusty.default"],
     init_rc: ["android.hardware.security.keymint-service.rust.trusty.rc"],
-    vintf_fragments: ["android.hardware.security.keymint-service.rust.trusty.xml"],
-    required: ["android.hardware.hardware_keystore_V4.xml"],
-    rustlibs: [
-        "libkmr_hal_v4",
-        "libtrusty-rs",
-    ],
+    vintf_fragments: select(release_flag("RELEASE_AIDL_USE_UNFROZEN"), {
+        true: ["android.hardware.security.keymint-service.rust.trusty.xml"],
+        default: ["android.hardware.security.keymint-service.rust.trusty_V4.xml"],
+    }),
+    required: select(release_flag("RELEASE_AIDL_USE_UNFROZEN"), {
+        true: ["android.hardware.hardware_keystore_V5.xml"],
+        default: ["android.hardware.hardware_keystore_V4.xml"],
+    }),
+    rustlibs: select(release_flag("RELEASE_AIDL_USE_UNFROZEN"), {
+        true: [
+            "libkmr_hal",
+            "libtrusty-rs",
+        ],
+        default: [
+            "libkmr_hal_v4",
+            "libtrusty-rs",
+        ],
+    }),
 }
 
-// Keymint hal service in vendor, enabled by vendor apex.
+// KeyMint HAL service in vendor, enabled by vendor apex.
 // This service is disabled by default and does not package a VINTF fragment.
 // This service can be enabled at boot via vendor apex:
 // - at boot, mount a vendor apex for module `com.android.hardware.keymint`
@@ -69,7 +81,7 @@ rust_binary {
     ],
 }
 
-// Keymint hal service in system_ext, interacting with the Trusty Security VM.
+// KeyMint HAL service in system_ext, interacting with the Trusty Security VM.
 // This service is disabled by default and does not package a VINTF fragment.
 // This service can be enabled at boot via vendor apex:
 // - at boot, mount a vendor apex for module `com.android.hardware.keymint`
@@ -112,6 +124,13 @@ prebuilt_etc {
     sub_dir: "vintf",
     vendor: true,
     src: "android.hardware.security.keymint-service.rust.trusty.xml",
+}
+
+prebuilt_etc {
+    name: "android.hardware.security.keymint-service.rust.trusty_V4.xml",
+    sub_dir: "vintf",
+    vendor: true,
+    src: "android.hardware.security.keymint-service.rust.trusty_V4.xml",
 }
 
 prebuilt_etc {
