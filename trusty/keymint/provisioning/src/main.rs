@@ -19,7 +19,8 @@ use android_trusty_provisioning::aidl::android::trusty::provisioning::IProvision
 };
 use anyhow::{ensure, Context, Result};
 use binder::{self, AccessorProvider, Strong};
-use cbor_util::{deserialize, value_to_bytes, value_to_map, value_to_text};
+use cbor_util::{deserialize, parse_value_map, value_to_bytes, value_to_map, value_to_text};
+use ciborium::value::Value;
 use clap::{Args, Parser, Subcommand};
 use der::{Decode, Reader};
 use log::{error, info, LevelFilter};
@@ -40,7 +41,7 @@ struct Cli {
     action: Action,
 }
 
-#[derive(clap::ValueEnum, Clone, Debug, PartialEq)]
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum UdsCertsTarget {
     /// Provision UDS certificates to the host's persistent storage.
     Host,
@@ -63,6 +64,23 @@ enum Action {
     /// Fetch UDS certificates from the host persistence layer
     #[clap(visible_alias = "get-uds-certs")]
     GetUdsCerts(UdsCertsArgs),
+}
+
+#[derive(Debug)]
+struct UdsCerts {
+    signer_name: String,
+    // CBOR-encoded array of bstr.
+    certs: Vec<u8>,
+}
+
+impl UdsCerts {
+    fn try_from_cbor(k: Value, v: Value, context: &'static str) -> Result<Self> {
+        Ok(Self { signer_name: value_to_text(k, context)?, certs: value_to_bytes(v, context)? })
+    }
+
+    fn into_cbor_entry(self) -> (Value, Value) {
+        (Value::Text(self.signer_name), Value::Bytes(self.certs))
+    }
 }
 
 #[derive(Args, Clone, Debug)]
@@ -165,31 +183,41 @@ fn try_main() -> Result<()> {
     Ok(())
 }
 
-// TODO(b/467901773): Implement append logic. This currently overwrites the file.
+fn load_uds_certs<P: AsRef<Path>>(path: P) -> Result<Vec<UdsCerts>> {
+    let data = fs::read(path.as_ref())
+        .with_context(|| format!("Failed to read file {:?}", path.as_ref()))?;
+
+    parse_value_map(&data, "parse Uds certs map")?
+        .into_iter()
+        .map(|(k, v)| UdsCerts::try_from_cbor(k, v, "converting to UdsCerts"))
+        .collect()
+}
+
 fn append_uds_certs(args: &AppendUdsCertsArgs) -> Result<()> {
-    let content = fs::read(&args.input_file)
-        .with_context(|| format!("Failed to read input file from {}", args.input_file.display()))?;
+    ensure!(args.target == UdsCertsTarget::Host, "Currently only --target host is supported");
 
-    match args.target {
-        UdsCertsTarget::Host => {
-            let dest_path = Path::new(HOST_UDS_CERTS_PATH);
+    let uds_certs_store_path = Path::new(HOST_UDS_CERTS_PATH);
 
-            if let Some(parent_dir) = dest_path.parent() {
-                fs::create_dir_all(parent_dir).with_context(|| {
-                    format!("Failed to create parent directory {}", parent_dir.display())
-                })?;
-            }
+    let new_uds_certs = load_uds_certs(&args.input_file)?;
 
-            fs::write(dest_path, &content).with_context(|| {
-                format!("Failed to write to destination file {}", dest_path.display())
-            })?;
+    // TODO(b/467901773): Implement merge logic.
+    // For now, overwrite the 'input_file' content to 'uds_certs_store_path'.
+    let merged_uds_certs = new_uds_certs;
 
-            info!(
-                "Successfully wrote UDS certs to host persistent storage at {}",
-                dest_path.display()
-            );
-        }
+    let merged_uds_certs_map: Vec<(Value, Value)> =
+        merged_uds_certs.into_iter().map(|cert| cert.into_cbor_entry()).collect();
+
+    if let Some(parent_dir) = uds_certs_store_path.parent() {
+        fs::create_dir_all(parent_dir)
+            .with_context(|| format!("Failed to create parent directory {:?}", parent_dir))?;
     }
+
+    let uds_certs_store_file = fs::File::create(uds_certs_store_path)
+        .with_context(|| format!("Failed to create destination file {:?}", uds_certs_store_path))?;
+    ciborium::into_writer(&Value::Map(merged_uds_certs_map), uds_certs_store_file)
+        .with_context(|| "Failed to write CBOR map to file")?;
+
+    info!("Successfully wrote UDS certs to host persistent storage at {:?}", uds_certs_store_path);
     Ok(())
 }
 
@@ -293,4 +321,82 @@ fn print_certs(certs: &[u8]) -> Result<()> {
         println!("{:#?}", certificate);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cbor_util::serialize;
+    use ciborium::cbor;
+    use tempfile::TempDir;
+
+    #[test]
+    fn loading_nonexistent_file_fails() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let file_path = test_dir.path().join("nonexistent.cbor");
+        let result = load_uds_certs(&file_path);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn loading_empty_file_fails() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let file_path = test_dir.path().join("empty.cbor");
+        fs::write(&file_path, [])?;
+        let result = load_uds_certs(&file_path);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn loading_valid_uds_certs_succeeds() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let file_path = test_dir.path().join("valid.cbor");
+
+        let cert_list_serialized = serialize(&cbor!([b"\x01", b"\x02"])?)?;
+
+        let outer_map = cbor!({
+            "s1" => Value::Bytes(cert_list_serialized)
+        })?;
+
+        fs::write(&file_path, serialize(&outer_map)?)?;
+
+        let certs = load_uds_certs(&file_path)?;
+        assert_eq!(certs.len(), 1);
+        assert_eq!(certs[0].signer_name, "s1");
+
+        let decoded_cert_list: Vec<Vec<u8>> = ciborium::from_reader(&certs[0].certs[..])?;
+        assert_eq!(decoded_cert_list, vec![vec![0x01], vec![0x02]]);
+        Ok(())
+    }
+
+    #[test]
+    fn converting_cbor_with_invalid_types_to_uds_certs_fails() -> Result<()> {
+        let context = "test";
+
+        let bad_key = cbor!(123)?;
+        let val = cbor!(b"\x01")?;
+        assert!(UdsCerts::try_from_cbor(bad_key, val, context).is_err());
+
+        let key = cbor!("s1")?;
+        let bad_val = cbor!("not bytes")?;
+        assert!(UdsCerts::try_from_cbor(key, bad_val, context).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn loading_an_uds_certs_file_with_invalid_type_fails() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let file_path = test_dir.path().join("invalid_type.cbor");
+
+        let value = cbor!([1, 2, 3])?;
+        fs::write(&file_path, serialize(&value)?)?;
+
+        let res = load_uds_certs(&file_path);
+        assert!(res.is_err());
+        let err_msg = res.unwrap_err().to_string().to_lowercase();
+        assert!(err_msg.contains("map"));
+        Ok(())
+    }
 }

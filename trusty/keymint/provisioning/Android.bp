@@ -1,12 +1,12 @@
 package {
     default_applicable_licenses: ["Android-Apache-2.0"],
+    default_team: "trendy_team_trusty",
 }
 
-rust_binary {
-    name: "keymint_provisioning_tool",
+rust_defaults {
+    name: "keymint_provisioning_tool_defaults",
     crate_name: "keymint_provisioning_tool",
     srcs: ["src/main.rs"],
-    prefer_rlib: true,
     rustlibs: [
         "android.trusty.provisioning-rust",
         "libandroid_logger",
@@ -15,9 +15,25 @@ rust_binary {
         "libcbor_util",
         "libclap",
         "libder",
+        "libciborium",
         "liblog_rust",
         "librustutils",
         "libx509_cert",
     ],
+}
+
+rust_binary {
+    name: "keymint_provisioning_tool",
+    defaults: ["keymint_provisioning_tool_defaults"],
+    prefer_rlib: true,
     system_ext_specific: true,
+}
+
+rust_test {
+    name: "keymint_provisioning_tool_tests",
+    defaults: ["keymint_provisioning_tool_defaults"],
+    rustlibs: [
+        "libtempfile",
+    ],
+    test_suites: ["general-tests"],
 }
