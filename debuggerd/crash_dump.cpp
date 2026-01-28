@@ -269,9 +269,10 @@ static void Initialize(char** argv) {
   });
 }
 
-static void ParseArgs(int argc, char** argv, pid_t* pseudothread_tid, DebuggerdDumpType* dump_type) {
-  if (argc != 4) {
-    LOG(FATAL) << "wrong number of args: " << argc << " (expected 4)";
+static void ParseArgs(int argc, char** argv, pid_t* pseudothread_tid, DebuggerdDumpType* dump_type,
+                      pid_t* ppid) {
+  if (argc != 5) {
+    LOG(FATAL) << "wrong number of args: " << argc << " (expected 5)";
   }
 
   if (!android::base::ParseInt(argv[1], &g_target_thread, 1, std::numeric_limits<pid_t>::max())) {
@@ -297,6 +298,11 @@ static void ParseArgs(int argc, char** argv, pid_t* pseudothread_tid, DebuggerdD
     default:
       LOG(FATAL) << "invalid requested dump type: " << dump_type_int;
   }
+
+  if (!android::base::ParseInt(argv[4], ppid, 1, std::numeric_limits<pid_t>::max())) {
+    LOG(FATAL) << "invalid ppid: " << argv[4];
+  }
+
 }
 
 static void ReadCrashInfo(unique_fd& fd, siginfo_t* siginfo,
@@ -581,6 +587,7 @@ int main(int argc, char** argv) {
   if (getppid() != target_process) {
     LOG(FATAL) << "parent died";
   }
+
   atrace_end(ATRACE_TAG);
 
   // Reparent ourselves to init, so that the signal handler can waitpid on the
@@ -611,10 +618,11 @@ int main(int argc, char** argv) {
   ATRACE_NAME("after reparent");
   pid_t pseudothread_tid;
   DebuggerdDumpType dump_type;
+  pid_t crashing_process_ppid;
   ProcessInfo process_info;
 
   Initialize(argv);
-  ParseArgs(argc, argv, &pseudothread_tid, &dump_type);
+  ParseArgs(argc, argv, &pseudothread_tid, &dump_type, &crashing_process_ppid);
 
   // Die if we take too long.
   //
@@ -657,6 +665,7 @@ int main(int argc, char** argv) {
 
       ThreadInfo info;
       info.pid = target_process;
+      info.ppid = crashing_process_ppid;
       info.tid = thread;
       info.uid = getuid();
       info.thread_name = get_thread_name(thread);

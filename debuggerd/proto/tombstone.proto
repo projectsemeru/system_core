@@ -54,6 +54,7 @@ message Tombstone {
   string timestamp = 4;
 
   uint32 pid = 5;
+  uint32 ppid = 29;
   uint32 tid = 6;
   uint32 uid = 7;
   string selinux_label = 8;
@@ -82,7 +83,7 @@ message Tombstone {
 
   StackHistoryBuffer stack_history_buffer = 26;
 
-  reserved 29 to 999;
+  reserved 30 to 999;
 }
 
 enum Architecture {

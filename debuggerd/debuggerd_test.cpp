@@ -3060,13 +3060,13 @@ TEST_F(CrasherTest, verify_header) {
 }
 
 // Verify that the thread header is formatted properly.
-TEST_F(CrasherTest, verify_thread_header) {
+void verify_thread_header(CrasherTest* test, bool enable_seccomp) {
   void* shared_map =
       mmap(nullptr, sizeof(pid_t), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
   ASSERT_NE(MAP_FAILED, shared_map);
   memset(shared_map, 0, sizeof(pid_t));
 
-  StartProcess([&shared_map]() {
+  test->StartProcess([&shared_map]() {
     std::atomic_bool tid_written;
     std::thread thread([&tid_written, &shared_map]() {
       pid_t tid = gettid();
@@ -3074,21 +3074,22 @@ TEST_F(CrasherTest, verify_thread_header) {
       tid_written = true;
       volatile bool done = false;
       while (!done)
-        ;
+      ;
     });
     thread.detach();
     while (!tid_written.load(std::memory_order_acquire))
-      ;
+    ;
     abort();
-  });
+  }, enable_seccomp ? &seccomp_fork : fork);
 
-  pid_t primary_pid = crasher_pid;
+  pid_t parent_pid = getpid();
+  pid_t primary_pid = test->crasher_pid;
 
   unique_fd output_fd;
-  StartIntercept(&output_fd);
-  FinishCrasher();
-  AssertDeath(SIGABRT);
-  ASSERT_NO_FATAL_FAILURE(FinishIntercept());
+  test->StartIntercept(&output_fd);
+  test->FinishCrasher();
+  test->AssertDeath(SIGABRT);
+  ASSERT_NO_FATAL_FAILURE(test->FinishIntercept());
 
   // Read the tid data out.
   pid_t tid;
@@ -3102,13 +3103,23 @@ TEST_F(CrasherTest, verify_thread_header) {
 
   // Verify that there are two headers, one where the tid is "primary_pid"
   // and the other where the tid is "tid".
-  std::string match_str = android::base::StringPrintf("pid: %d, tid: %d, name: .*  >>> .* <<<\\n",
-                                                      primary_pid, primary_pid);
+  std::string match_str =
+      android::base::StringPrintf("pid: %d, ppid: %d, tid: %d, name: .*  >>> .* <<<\\n",
+                                  primary_pid, parent_pid, primary_pid);
   ASSERT_MATCH(result, match_str);
 
   match_str =
-      android::base::StringPrintf("pid: %d, tid: %d, name: .*  >>> .* <<<\\n", primary_pid, tid);
+      android::base::StringPrintf("pid: %d, ppid: %d, tid: %d, name: .*  >>> .* <<<\\n",
+                                  primary_pid, parent_pid, tid);
   ASSERT_MATCH(result, match_str);
+}
+
+TEST_F(CrasherTest, verify_thread_header) {
+  verify_thread_header(this, /*enable_seccomp=*/false);
+}
+
+TEST_F(CrasherTest, verify_thread_header_seccomp) {
+  verify_thread_header(this, /*enable_seccomp=*/true);
 }
 
 // Verify that there is a BuildID present in the map section and set properly.
