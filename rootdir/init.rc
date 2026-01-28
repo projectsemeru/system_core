@@ -1089,14 +1089,6 @@ on property:vold.checkpoint_committed=1
 # failures (before memory is fragmented, and cpu is busy running tons of other
 # stuff) and we absolutely want to be before netd and the system boot slot is
 # considered to have booted successfully.
-#
-# trusty VM does not include many base services like 'bpfloader' or 'netd',
-# thus 'exec_start' just fails to do anything and fails open,
-# but later wait_for_prop 'bpf.progs_loaded' hangs
-on load-bpf-programs && property:trusty.security_vm.enabled=1
-    # this is a lie, but oh well...
-    setprop bpf.progs_loaded 1
-
 on load-bpf-programs
     # Temporarily relax access to kallsyms so that bpfloader can resolve kernel symbols
     # at load time.
