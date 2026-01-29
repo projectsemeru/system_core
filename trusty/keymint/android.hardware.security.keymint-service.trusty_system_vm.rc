@@ -1,6 +1,7 @@
 # service started when selecting `com.android.hardware.keymint.trusty_system_vm` vendor apex
 service system.keymint-service.trusty_system_vm \
-  /system_ext/bin/hw/android.hardware.security.keymint-service.trusty_system_vm
+  /system_ext/bin/hw/android.hardware.security.keymint-service.trusty_system_vm \
+              --skip-hal shared-secret
     disabled
     user nobody
     group drmrpc
