@@ -196,28 +196,6 @@ cc_library {
                 "uevent.cpp",
             ],
         },
-
-        // qtaguid.cpp loads libnetd_client.so with dlopen().  Since
-        // the interface of libnetd_client.so may vary between AOSP
-        // releases, exclude qtaguid.cpp from the VNDK-SP variant.
-        vendor: {
-            exclude_srcs: [
-                "qtaguid.cpp",
-            ],
-            header_abi_checker: {
-                enabled: true,
-                ref_dump_dirs: ["abi-dumps"],
-            },
-        },
-        product: {
-            exclude_srcs: [
-                "qtaguid.cpp",
-            ],
-            header_abi_checker: {
-                enabled: true,
-                ref_dump_dirs: ["abi-dumps"],
-            },
-        },
     },
 
     whole_static_libs: ["libcutils_sockets"],
