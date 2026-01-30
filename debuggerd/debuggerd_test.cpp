@@ -1326,13 +1326,8 @@ TEST_F(CrasherTest, capabilities) {
       err(1, "setresuid failed");
     }
 
-    __user_cap_header_struct capheader;
-    __user_cap_data_struct capdata[2];
-    memset(&capheader, 0, sizeof(capheader));
-    memset(&capdata, 0, sizeof(capdata));
-
-    capheader.version = _LINUX_CAPABILITY_VERSION_3;
-    capheader.pid = 0;
+    __user_cap_header_struct capheader = {.version = _LINUX_CAPABILITY_VERSION_3};
+    __user_cap_data_struct capdata[2] = {};
 
     // Turn on every third capability.
     static_assert(CAP_LAST_CAP > 33, "CAP_LAST_CAP <= 32");
