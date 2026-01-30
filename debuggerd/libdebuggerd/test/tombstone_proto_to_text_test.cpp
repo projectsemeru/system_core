@@ -36,6 +36,7 @@ class TombstoneProtoToTextTest : public ::testing::Test {
     tombstone_->set_build_fingerprint("Test fingerprint");
     tombstone_->set_timestamp("1970-01-01 00:00:00");
     tombstone_->set_pid(100);
+    tombstone_->set_ppid(99);
     tombstone_->set_tid(100);
     tombstone_->set_uid(0);
     tombstone_->set_selinux_label("none");
