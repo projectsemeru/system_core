@@ -517,7 +517,13 @@ uint32_t CheckPermissions(const std::string& name, const std::string& value,
     property_info_area->GetPropertyInfo(name.c_str(), &target_context, &type);
 
     if (!CheckMacPerms(name, target_context, source_context.c_str(), cr)) {
-        *error = "SELinux permission check failed";
+        // Info about contexts are available also in the selinux denials in the kernel message,
+        // but they may be suppressed by the ratelimiter, in which case this log from init can be
+        // helpful.
+        *error = StringPrintf(
+                "SELinux permission check failed "
+                "(source_context=%s, target_context=%s)",
+                source_context.c_str(), target_context ?: "(null)");
         return PROP_ERROR_PERMISSION_DENIED;
     }
 
