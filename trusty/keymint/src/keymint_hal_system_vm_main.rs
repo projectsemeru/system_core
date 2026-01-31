@@ -19,6 +19,7 @@
 use android_trusty_commservice::aidl::android::trusty::commservice::ICommService::ICommService;
 use anyhow::{anyhow, bail, Context, Result};
 use binder::{self, AccessorProvider, ProcessState, Strong};
+use clap::Parser;
 use kmr_hal::{register_binder_services, send_hal_info, Hal, SerializedChannel, ALL_HALS};
 use log::{error, info, warn};
 use std::{
@@ -65,6 +66,23 @@ impl From<CommServiceChannel> for HalChannel {
     }
 }
 
+#[derive(Parser, Debug)]
+struct Args {
+    /// HALs to skip registering, e.g., --skip-hal shared-secret
+    #[arg(long = "skip-hal", value_parser = parse_hal)]
+    skip_hals: Vec<Hal>,
+}
+
+fn parse_hal(s: &str) -> Result<Hal, String> {
+    match s {
+        "keymint-device" => Ok(Hal::KeyMintDevice),
+        "remotely-provisioned-component" => Ok(Hal::RemotelyProvisionedComponent),
+        "secure-clock" => Ok(Hal::SecureClock),
+        "shared-secret" => Ok(Hal::SharedSecret),
+        _ => Err(format!("Unknown HAL: {s}")),
+    }
+}
+
 fn main() {
     if let Err(e) = inner_main() {
         panic!("HAL service failed: {e:?}");
@@ -72,6 +90,7 @@ fn main() {
 }
 
 fn inner_main() -> Result<()> {
+    let args = Args::parse();
     setup_logging_and_panic_hook();
 
     info!("Trusty KM HAL service is starting.");
@@ -106,17 +125,10 @@ fn inner_main() -> Result<()> {
     #[cfg(feature = "vm_reprovisioning_via_hal")]
     kmr_hal_nonsecure::send_attestation_id_info(&channel.0)?;
 
-    // We are not registering SharedSecret here. If we are running using placeholder HALs, we will
-    // serve the HAL using an accessor, not this legacy method. If placeholder HALs are not used,
-    // this will be served by a separate service directly talking with HwCrypto.
-    let all_hals_minus_shared_secret: Vec<_> =
-        ALL_HALS.iter().filter(|&x| *x != Hal::SharedSecret).copied().collect();
+    let hals_to_register: Vec<_> =
+        ALL_HALS.iter().filter(|&x| !args.skip_hals.contains(x)).copied().collect();
 
-    register_binder_services(
-        &channel.0,
-        all_hals_minus_shared_secret.as_slice(),
-        SERVICE_INSTANCE,
-    )?;
+    register_binder_services(&channel.0, hals_to_register.as_slice(), SERVICE_INSTANCE)?;
 
     // Send the HAL service information to the TA
     channel.with(|c| send_hal_info(c).context("failed to populate HAL info"))?;
