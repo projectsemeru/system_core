@@ -396,14 +396,6 @@ String8 sanitizeSerialNumber(const std::string& serial) {
     return sanitized;
 }
 
-static base::Result<String8, base::Errno, false> readSerialNumber(const String8& path) {
-    std::string unsanitized;
-    auto res = readFromFile(path, &unsanitized);
-    if (!res.ok()) return res.error();
-
-    return sanitizeSerialNumber(unsanitized);
-}
-
 static bool isScopedPowerSupply(const char* name) {
     constexpr char kScopeDevice[] = "Device";
 
@@ -502,9 +494,7 @@ void BatteryMonitor::updateValues(void) {
         res.ok() || res.error().code() != ENOENT)
         ensureBatteryHealthData(mHealthInfo.get())->batteryFirstUsageSeconds = res.value_or(0);
 
-    if (auto res = readSerialNumber(mHealthdConfig->batterySerialPath);
-        res.ok() || res.error().code() != ENOENT)
-        ensureBatteryHealthData(mHealthInfo.get())->batterySerialNumber = res.value_or(String8());
+    getSerialNumber(&ensureBatteryHealthData(mHealthInfo.get())->batterySerialNumber);
 
     mHealthInfo->batteryTemperatureTenthsCelsius =
             mBatteryFixedTemperature
@@ -804,9 +794,10 @@ status_t BatteryMonitor::getProperty(int id, struct BatteryProperty* val) {
 }
 
 status_t BatteryMonitor::getSerialNumber(std::optional<std::string>* out) {
-    if (auto serialNumber = readSerialNumber(mHealthdConfig->batterySerialPath);
-        serialNumber.ok() || serialNumber.error().code() == ENOENT)
-        *out = serialNumber.value_or(String8());
+    std::string unsanitized;
+    if (auto res = readFromFile(mHealthdConfig->batterySerialPath, &unsanitized); res.ok()) {
+        *out = {sanitizeSerialNumber(unsanitized)};
+    }
     return OK;
 }
 
