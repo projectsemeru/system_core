@@ -139,7 +139,7 @@ struct PendingControlMessage {
 [[clang::no_destroy]] static std::condition_variable udc_detection_cv;
 [[clang::no_destroy]] static std::mutex udc_controller_lock;
 static auto udc_controller_set = false;
-static std::atomic<bool> udc_timeout = false;
+[[clang::no_destroy]] static std::atomic<bool> udc_timeout = false;
 
 // Init epolls various FDs to wait for various inputs.  It previously waited on property changes
 // with a blocking socket that contained the information related to the change, however, it was easy
@@ -236,7 +236,7 @@ static class PropWaiterState {
     GUARDED_BY(lock_) std::string wait_prop_name_;
     GUARDED_BY(lock_) std::string wait_prop_value_;
 
-} prop_waiter_state;
+} prop_waiter_state [[clang::no_destroy]];
 
 bool start_waiting_for_property(const char* name, const char* value) {
     return prop_waiter_state.StartWaiting(name, value);
