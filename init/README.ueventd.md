@@ -81,7 +81,7 @@ There are three options to set for a subsystem or driver: the name, which device
 and which directory to place the device in. The section takes the below format of
 
     subsystem <subsystem_name>
-      devname uevent_devname|uevent_devpath
+      devname uevent_devname|uevent_devpath|sys_name
       [dirname <directory>]
 
 `subsystem_name` is used to match the uevent `SUBSYSTEM` value.
