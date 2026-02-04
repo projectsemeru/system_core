@@ -1160,9 +1160,10 @@ int SecondStageMain(int argc, char** argv) {
     InstallInitNotifier(&epoll);
     StartPropertyService(&property_fd);
 
-    // If boot_timeout property has been set in a debug build, start the boot monitor
+    // For a debug build: start the boot monitor using the delay (seconds) specified in the
+    // boot_timeout property. If the property is missing, use a default value of 600 seconds.
     if (GetBoolProperty("ro.debuggable", false)) {
-        int timeout = GetIntProperty("ro.boot.boot_timeout", 0);
+        int timeout = GetIntProperty("ro.boot.boot_timeout", 600);
         if (timeout > 0) {
             StartSecondStageBootMonitor(timeout);
         }
