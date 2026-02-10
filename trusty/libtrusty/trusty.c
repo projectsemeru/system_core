@@ -41,30 +41,69 @@ static const char* strip_prefix(const char* str, const char* prefix) {
     }
 }
 
+static int get_socket_type_from_prefix(const char* type_str, const char** stripped_str_out,
+                                       int default_socket_type) {
+    const char* stripped_prefix;
+    if ((stripped_prefix = strip_prefix(type_str, "STREAM:"))) {
+        *stripped_str_out = stripped_prefix;
+        return SOCK_STREAM;
+    } else if ((stripped_prefix = strip_prefix(type_str, "SEQPACKET:"))) {
+        *stripped_str_out = stripped_prefix;
+        return SOCK_SEQPACKET;
+    }
+    *stripped_str_out = type_str; // No prefix found, use original string
+    return default_socket_type;
+}
+
+static int do_socket_connect_with_retry(int fd, const struct sockaddr* sa, socklen_t sa_len,
+                                        const char* srv_name, const char* log_prefix,
+                                        const char* log_addr_str, const char* caller_func_name) {
+    int ret;
+    int retry = 10;
+    do {
+        ret = TEMP_FAILURE_RETRY(connect(fd, sa, sa_len));
+        if (ret && (errno == ENODEV || errno == ESOCKTNOSUPPORT) && --retry) {
+            /*
+             * For vsock, the kernel returns ESOCKTNOSUPPORT instead of ENODEV
+             * if the socket type is SOCK_SEQPACKET and the guest CID we are
+             * trying to connect to is not ready yet.
+             */
+            ALOGE("%s: Can't connect to %s %s for tipc service \"%s\" (err=%d) %d retries "
+                  "remaining\n",
+                  caller_func_name, log_prefix, log_addr_str, srv_name, errno, retry);
+            sleep(1);
+        } else {
+            retry = 0;
+        }
+    } while (retry);
+
+    if (ret) {
+        ret = -errno;
+        ALOGE("%s: Can't connect to %s %s for tipc service \"%s\" (err=%d)\n", caller_func_name,
+              log_prefix, log_addr_str, srv_name, errno);
+        close(fd);
+        return ret < 0 ? ret : -1;
+    }
+    return 0; // Success
+}
+
 static bool use_vsock_connection = false;
 static int tipc_vsock_connect(const char* type_cid_port_str, const char* srv_name) {
     int ret;
     const char* cid_port_str;
     char* port_str;
     char* end_str;
-    int socket_type;
-    if ((cid_port_str = strip_prefix(type_cid_port_str, "STREAM:"))) {
-        socket_type = SOCK_STREAM;
-    } else if ((cid_port_str = strip_prefix(type_cid_port_str, "SEQPACKET:"))) {
-        socket_type = SOCK_SEQPACKET;
-    } else {
-        /*
-         * Default to SOCK_STREAM if neither type is specified.
-         *
-         * TODO: use SOCK_SEQPACKET by default instead of SOCK_STREAM when SOCK_SEQPACKET is fully
-         * supported since it matches tipc better. At the moment SOCK_SEQPACKET is not supported by
-         * crosvm. It is also significantly slower since the Linux kernel implementation (as of
-         * v6.7-rc1) sends credit update packets every time it receives a data packet while the
-         * SOCK_STREAM version skips these unless the remaining buffer space is "low".
-         */
-        socket_type = SOCK_STREAM;
-        cid_port_str = type_cid_port_str;
-    }
+    /*
+     * Default to SOCK_STREAM if neither type is specified.
+     *
+     * TODO: use SOCK_SEQPACKET by default instead of SOCK_STREAM when SOCK_SEQPACKET
+     * is fully supported since it matches tipc better. At the moment SOCK_SEQPACKET
+     * is not supported by crosvm. It is also significantly slower since the Linux
+     * kernel implementation (as of v6.7-rc1) sends credit update packets every time
+     * it receives a data packet, while the SOCK_STREAM version skips these unless
+     * the remaining buffer space is "low".
+     */
+    int socket_type = get_socket_type_from_prefix(type_cid_port_str, &cid_port_str, SOCK_STREAM);
     long cid = strtol(cid_port_str, &port_str, 0);
     if (port_str[0] != ':') {
         ALOGE("%s: invalid VSOCK str, \"%s\", need cid:port missing : after cid\n", __func__,
@@ -97,28 +136,12 @@ static int tipc_vsock_connect(const char* type_cid_port_str, const char* srv_nam
             .svm_port = port,
             .svm_cid = cid,
     };
-    int retry = 10;
-    do {
-        ret = TEMP_FAILURE_RETRY(connect(fd, (struct sockaddr*)&sa, sizeof(sa)));
-        if (ret && (errno == ENODEV || errno == ESOCKTNOSUPPORT) && --retry) {
-            /*
-             * The kernel returns ESOCKTNOSUPPORT instead of ENODEV if the socket type is
-             * SOCK_SEQPACKET and the guest CID we are trying to connect to is not ready yet.
-             */
-            ALOGE("%s: Can't connect to vsock %ld:%ld for tipc service \"%s\" (err=%d) %d retries "
-                  "remaining\n",
-                  __func__, cid, port, srv_name, errno, retry);
-            sleep(1);
-        } else {
-            retry = 0;
-        }
-    } while (retry);
+    char addr_desc_buf[64];
+    snprintf(addr_desc_buf, sizeof(addr_desc_buf), "%ld:%ld", cid, port);
+    ret = do_socket_connect_with_retry(fd, (struct sockaddr*)&sa, sizeof(sa), srv_name, "vsock",
+                                       addr_desc_buf, __func__);
     if (ret) {
-        ret = -errno;
-        ALOGE("%s: Can't connect to vsock %ld:%ld for tipc service \"%s\" (err=%d)\n", __func__,
-              cid, port, srv_name, errno);
-        close(fd);
-        return ret < 0 ? ret : -1;
+        return ret;
     }
     /*
      * TODO: Current vsock tipc bridge in trusty expects a port name in the
