@@ -28,6 +28,7 @@
 #include <unistd.h>
 
 #include <linux/vm_sockets.h> /* must be after sys/socket.h */
+#include <linux/un.h>
 #include <log/log.h>
 
 #include <trusty/ipc.h>
@@ -87,7 +88,7 @@ static int do_socket_connect_with_retry(int fd, const struct sockaddr* sa, sockl
     return 0; // Success
 }
 
-static bool use_vsock_connection = false;
+static bool use_socket_connection = false;
 static int tipc_vsock_connect(const char* type_cid_port_str, const char* srv_name) {
     int ret;
     const char* cid_port_str;
@@ -169,17 +170,49 @@ static int tipc_vsock_connect(const char* type_cid_port_str, const char* srv_nam
         close(fd);
         return ret < 0 ? ret : -1;
     }
-    use_vsock_connection = true;
+    use_socket_connection = true;
     return fd;
 }
 
-static size_t tipc_vsock_send(int fd, const struct iovec* iov, int iovcnt, struct trusty_shm* shms,
-                              int shmcnt) {
+static int tipc_uds_connect(const char* type_path_str, const char* srv_name) {
+    int ret;
+    const char* path_str;
+    // Default to SOCK_SEQPACKET if neither type is specified.
+    int socket_type = get_socket_type_from_prefix(type_path_str, &path_str, SOCK_SEQPACKET);
+    struct sockaddr_un sa = {
+            .sun_family = AF_UNIX,
+    };
+    int plen = snprintf(sa.sun_path, sizeof(sa.sun_path), "%s%s", path_str, srv_name);
+    if (plen >= sizeof(sa.sun_path)) {
+        ALOGE("%s: uds path %s, srv_name %s too long\n", __func__, path_str, srv_name);
+        return -1;
+    }
+
+    int fd = socket(AF_UNIX, socket_type, 0);
+    if (fd < 0) {
+        ret = -errno;
+        ALOGE("%s: can't get uds %s socket for tipc service \"%s\" (err=%d)\n", __func__,
+              path_str, srv_name, errno);
+        return ret < 0 ? ret : -1;
+    }
+
+    ret = do_socket_connect_with_retry(fd, (struct sockaddr*)&sa, sizeof(sa), srv_name, "uds",
+                                       sa.sun_path, __func__);
+    if (ret) {
+        return ret;
+    }
+    use_socket_connection = true;
+    return fd;
+}
+
+static size_t tipc_socket_send(int fd, const struct iovec* iov, int iovcnt, struct trusty_shm* shms,
+                               int shmcnt) {
     int ret;
 
     (void)shms;
     if (shmcnt != 0) {
-        ALOGE("%s: vsock does not yet support passing fds\n", __func__);
+        /* TODO: support passing shms if the transfer type is compatible with the socket api. */
+        ALOGE("%s: socket wrapper does not yet support passing fds\n", __func__);
         return -ENOTSUP;
     }
     ret = TEMP_FAILURE_RETRY(writev(fd, iov, iovcnt));
@@ -199,6 +232,10 @@ int tipc_connect(const char* dev_name, const char* srv_name) {
     const char* type_cid_port_str = strip_prefix(dev_name, "VSOCK:");
     if (type_cid_port_str) {
         return tipc_vsock_connect(type_cid_port_str, srv_name);
+    }
+    const char* type_uds_str = strip_prefix(dev_name, "UDS:");
+    if (type_uds_str) {
+        return tipc_uds_connect(type_uds_str, srv_name);
     }
 
     fd = TEMP_FAILURE_RETRY(open(dev_name, O_RDWR));
@@ -222,8 +259,8 @@ int tipc_connect(const char* dev_name, const char* srv_name) {
 
 ssize_t tipc_send(int fd, const struct iovec* iov, int iovcnt, struct trusty_shm* shms,
                   int shmcnt) {
-    if (use_vsock_connection) {
-        return tipc_vsock_send(fd, iov, iovcnt, shms, shmcnt);
+    if (use_socket_connection) {
+        return tipc_socket_send(fd, iov, iovcnt, shms, shmcnt);
     }
     struct tipc_send_msg_req req;
     req.iov = (__u64)iov;
