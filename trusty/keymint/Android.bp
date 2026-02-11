@@ -139,3 +139,10 @@ prebuilt_etc {
     vendor: true,
     src: "android.hardware.security.keymint-service.trusty_system_vm.xml",
 }
+
+prebuilt_etc {
+    name: "android.hardware.security.keymint-service.security_vm.xml",
+    sub_dir: "vintf",
+    vendor: true,
+    src: "android.hardware.security.keymint-service.security_vm.xml",
+}
