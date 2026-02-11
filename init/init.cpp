@@ -1038,11 +1038,6 @@ static void SecondStageBootMonitor(int timeout_sec) {
     int extra_sec = timeout_sec <= cur_sec ? 0 : timeout_sec - cur_sec;
     auto boot_timeout = std::chrono::seconds(extra_sec);
 
-    // since boot_completed isn't updated in the recovery boot, let's skip the monitor
-    if (IsRecoveryMode()) {
-        return;
-    }
-
     LOG(INFO) << "Started BootMonitorThread, expiring in " << timeout_sec
               << " seconds from boot-up";
 
@@ -1058,9 +1053,30 @@ static void SecondStageBootMonitor(int timeout_sec) {
     }
 }
 
-static void StartSecondStageBootMonitor(int timeout_sec) {
+// Start a boot monitor using the duration specified in the boot_timeout property,
+// retrieved from either the device property or fastboot cmdline.
+static void StartSecondStageBootMonitor() {
+    // timeout from the board setting property
+    int timeout_sec = GetIntProperty("ro.board.boot_timeout", 0);
+
+    // timeout from the fastboot cmdline takes precedence
+    timeout_sec = GetIntProperty("ro.boot.boot_timeout", timeout_sec);
+
+    if (timeout_sec <= 0)
+        return;
+
     std::thread monitor_thread(&SecondStageBootMonitor, timeout_sec);
     monitor_thread.detach();
+}
+
+static void InstallSecondStageBootDebugHook() {
+    if (!GetBoolProperty("ro.debuggable", false))
+        return;
+
+    if (GetBootMode() != BootMode::NORMAL_MODE)
+        return;
+
+    StartSecondStageBootMonitor();
 }
 
 int SecondStageMain(int argc, char** argv) {
@@ -1154,16 +1170,11 @@ int SecondStageMain(int argc, char** argv) {
     InstallInitNotifier(&epoll);
     StartPropertyService(&property_fd);
 
-    // If boot_timeout property has been set in a debug build, start the boot monitor
-    if (GetBoolProperty("ro.debuggable", false)) {
-        int timeout = GetIntProperty("ro.boot.boot_timeout", 0);
-        if (timeout > 0) {
-            StartSecondStageBootMonitor(timeout);
-        }
-    }
-
     // Make the time that init stages started available for bootstat to log.
     RecordStageBoottimes(start_time);
+
+    // Install a debug hook for the second stage boot
+    InstallSecondStageBootDebugHook();
 
     // Set libavb version for Framework-only OTA match in Treble build.
     if (const char* avb_version = getenv("INIT_AVB_VERSION"); avb_version != nullptr) {
