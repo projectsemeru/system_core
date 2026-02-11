@@ -232,11 +232,20 @@ int Looper::pollInner(int timeoutMillis) {
 
     // A timeout of 0 indicates that there are already messages to handle, and
     // we don't need to poll for more yet.
-    if (!sSkipEpollWaitIfPossible || originalTimeout != 0 || mRequests.size() > 0) {
+
+    int epollFd;
+    bool hasRequests;
+    {
+        AutoMutex _l(mLock);
+        epollFd = mEpollFd.get();
+        hasRequests = mRequests.size() > 0;
+    }
+
+    if (!sSkipEpollWaitIfPossible || originalTimeout != 0 || hasRequests) {
         // We are about to idle.
         std::atomic_store_explicit(&mPolling, true, std::memory_order_relaxed);
 
-        eventCount = epoll_wait(mEpollFd.get(), eventItems, EPOLL_MAX_EVENTS, timeoutMillis);
+        eventCount = epoll_wait(epollFd, eventItems, EPOLL_MAX_EVENTS, timeoutMillis);
 
         // No longer idling.
         std::atomic_store_explicit(&mPolling, false, std::memory_order_relaxed);
