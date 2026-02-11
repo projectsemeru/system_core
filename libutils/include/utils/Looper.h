@@ -334,10 +334,9 @@ public:
      *
      * When this method returns, it is safe to close the file descriptor since the looper
      * will no longer have a reference to it.  However, it is possible for the callback to
-     * already be running or for it to run one last time if the file descriptor was already
-     * signalled.  Calling code is responsible for ensuring that this case is safely handled.
-     * For example, if the callback takes care of removing itself during its own execution either
-     * by returning 0 or by calling this method, then it can be guaranteed to not be invoked
+     * already be running.  Calling code is responsible for ensuring that this case is safely
+     * handled. For example, if the callback takes care of removing itself during its own execution
+     * either by returning 0 or by calling this method, then it can be guaranteed to not be invoked
      * again at any later time unless registered anew.
      *
      * A simple way to avoid this problem is to use the version of addFd() that takes
@@ -475,7 +474,7 @@ public:
     const bool mAllowNonCallbacks; // immutable
 
     android::base::unique_fd mWakeEventFd;  // immutable
-    Mutex mLock;
+    mutable Mutex mLock;
 
     Vector<MessageEnvelope> mMessageEnvelopes; // guarded by mLock
     bool mSendingMessage; // guarded by mLock
@@ -492,6 +491,13 @@ public:
     std::unordered_map<SequenceNumber, Request> mRequests;               // guarded by mLock
     std::unordered_map<int /*fd*/, SequenceNumber> mSequenceNumberByFd;  // guarded by mLock
 
+    // The generation of the requests map. Incremented whenever a request is added or removed.
+    // This is used as an optimization in the poll loop to avoid acquiring mLock when
+    // no changes have occurred to the request map. It's okay for the variable to overflow: all
+    // checks of the generation should be inequality, which means that it would require the looper
+    // to somehow go through the entire uint64_t in one swoop in order to cause incorrect behaviour.
+    std::atomic<uint64_t> mRequestsGeneration;
+
     // The sequence number to use for the next fd that is added to the looper.
     // The sequence number 0 is reserved for the WakeEventFd.
     SequenceNumber mNextRequestSeq;  // guarded by mLock
@@ -504,6 +510,7 @@ public:
 
     int pollInner(int timeoutMillis);
     int removeSequenceNumberLocked(SequenceNumber seq);  // requires mLock
+    bool isResponseStale(const uint64_t generation, const SequenceNumber& seq) const;
     void awoken();
     void rebuildEpollLocked();
     void scheduleEpollRebuildLocked();
