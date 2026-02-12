@@ -29,6 +29,7 @@
 #include <atomic>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace android {
 
@@ -476,7 +477,7 @@ public:
     android::base::unique_fd mWakeEventFd;  // immutable
     mutable Mutex mLock;
 
-    Vector<MessageEnvelope> mMessageEnvelopes GUARDED_BY(mLock);
+    std::vector<MessageEnvelope> mMessageEnvelopes GUARDED_BY(mLock);
     bool mSendingMessage GUARDED_BY(mLock);
 
     // Whether we are currently waiting for work.  Not protected by a lock,
@@ -504,7 +505,7 @@ public:
 
     // This state is only used privately by pollOnce and does not require a lock since
     // it runs on a single thread.
-    Vector<Response> mResponses;
+    std::vector<Response> mResponses;
     size_t mResponseIndex;
     nsecs_t mNextMessageUptime; // set to LLONG_MAX when none
 

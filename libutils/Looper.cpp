@@ -17,10 +17,10 @@
 #define DEBUG_CALLBACKS 0
 #endif
 
-#include <utils/Looper.h>
-
-#include <atomic>
+#include <log/log.h>
 #include <sys/eventfd.h>
+#include <utils/Looper.h>
+#include <atomic>
 #include <cinttypes>
 
 namespace android {
@@ -166,7 +166,7 @@ int Looper::pollOnce(int timeoutMillis, int* outFd, int* outEvents, void** outDa
     for (;;) {
         const uint64_t generation = mRequestsGeneration.load(std::memory_order_acquire);
         while (mResponseIndex < mResponses.size()) {
-            const Response& response = mResponses.itemAt(mResponseIndex++);
+            const Response& response = mResponses[mResponseIndex++];
             int ident = response.request.ident;
             if (ident >= 0) {
                 if (isResponseStale(generation, response.seq)) {
@@ -238,7 +238,7 @@ int Looper::pollInner(int timeoutMillis) {
     {
         AutoMutex _l(mLock);
         epollFd = mEpollFd.get();
-        hasRequests = mRequests.size() > 0;
+        hasRequests = !mRequests.empty();
     }
 
     if (!sSkipEpollWaitIfPossible || originalTimeout != 0 || hasRequests) {
@@ -303,7 +303,7 @@ int Looper::pollInner(int timeoutMillis) {
                 if (epollEvents & EPOLLOUT) events |= EVENT_OUTPUT;
                 if (epollEvents & EPOLLERR) events |= EVENT_ERROR;
                 if (epollEvents & EPOLLHUP) events |= EVENT_HANGUP;
-                mResponses.push({.seq = seq, .events = events, .request = request});
+                mResponses.push_back({.seq = seq, .events = events, .request = request});
             } else {
                 ALOGW("Ignoring unexpected epoll events 0x%x for sequence number %" PRIu64
                       " that is no longer registered.",
@@ -315,9 +315,9 @@ Done: ;
 
     // Invoke pending message callbacks.
     mNextMessageUptime = LLONG_MAX;
-    while (mMessageEnvelopes.size() != 0) {
+    while (!mMessageEnvelopes.empty()) {
         nsecs_t now = systemTime(SYSTEM_TIME_MONOTONIC);
-        const MessageEnvelope& messageEnvelope = mMessageEnvelopes.itemAt(0);
+        const MessageEnvelope& messageEnvelope = mMessageEnvelopes.front();
         if (messageEnvelope.uptime <= now) {
             // Remove the envelope from the list.
             // We keep a strong reference to the handler until the call to handleMessage
@@ -326,7 +326,7 @@ Done: ;
             { // obtain handler
                 sp<MessageHandler> handler = messageEnvelope.handler;
                 Message message = messageEnvelope.message;
-                mMessageEnvelopes.removeAt(0);
+                mMessageEnvelopes.erase(mMessageEnvelopes.begin());
                 mSendingMessage = true;
                 mLock.unlock();
 
@@ -353,7 +353,7 @@ Done: ;
 
     // Invoke all response callbacks.
     for (size_t i = 0; i < mResponses.size(); i++) {
-        Response& response = mResponses.editItemAt(i);
+        Response& response = mResponses[i];
         if (response.request.ident == POLL_CALLBACK) {
             int fd = response.request.fd;
             int events = response.events;
@@ -660,12 +660,12 @@ void Looper::sendMessageAtTime(nsecs_t uptime, const sp<MessageHandler>& handler
         AutoMutex _l(mLock);
 
         size_t messageCount = mMessageEnvelopes.size();
-        while (i < messageCount && uptime >= mMessageEnvelopes.itemAt(i).uptime) {
+        while (i < messageCount && uptime >= mMessageEnvelopes[i].uptime) {
             i += 1;
         }
 
         MessageEnvelope messageEnvelope(uptime, handler, message);
-        mMessageEnvelopes.insertAt(messageEnvelope, i, 1);
+        mMessageEnvelopes.insert(mMessageEnvelopes.begin() + i, messageEnvelope);
 
         // Optimization: If the Looper is currently sending a message, then we can skip
         // the call to wake() because the next thing the Looper will do after processing
@@ -690,12 +690,8 @@ void Looper::removeMessages(const sp<MessageHandler>& handler) {
     { // acquire lock
         AutoMutex _l(mLock);
 
-        for (size_t i = mMessageEnvelopes.size(); i != 0; ) {
-            const MessageEnvelope& messageEnvelope = mMessageEnvelopes.itemAt(--i);
-            if (messageEnvelope.handler == handler) {
-                mMessageEnvelopes.removeAt(i);
-            }
-        }
+        std::erase_if(mMessageEnvelopes,
+                      [&](const MessageEnvelope& envelope) { return envelope.handler == handler; });
     } // release lock
 }
 
@@ -707,13 +703,9 @@ void Looper::removeMessages(const sp<MessageHandler>& handler, int what) {
     { // acquire lock
         AutoMutex _l(mLock);
 
-        for (size_t i = mMessageEnvelopes.size(); i != 0; ) {
-            const MessageEnvelope& messageEnvelope = mMessageEnvelopes.itemAt(--i);
-            if (messageEnvelope.handler == handler
-                    && messageEnvelope.message.what == what) {
-                mMessageEnvelopes.removeAt(i);
-            }
-        }
+        std::erase_if(mMessageEnvelopes, [&](const MessageEnvelope& envelope) {
+            return envelope.handler == handler && envelope.message.what == what;
+        });
     } // release lock
 }
 
