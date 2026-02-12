@@ -12,9 +12,12 @@ rust_binary {
         "libandroid_logger",
         "libanyhow",
         "libbinder_rs",
+        "libcbor_util",
         "libclap",
+        "libder",
         "liblog_rust",
         "librustutils",
+        "libx509_cert",
     ],
     system_ext_specific: true,
 }

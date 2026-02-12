@@ -77,9 +77,6 @@ bool IsFirstStageSnapuserdRunning();
 // Return the pid of the first-stage instances of snapuserd, if it was started.
 std::optional<pid_t> GetSnapuserdFirstStagePid();
 
-// Return snapuserd info strings that were set during first-stage init.
-std::vector<std::string> GetSnapuserdFirstStageInfo();
-
 // Returns true if first-stage snapuserd is running.
 bool IsFirstStageSnapuserdRunning();
 

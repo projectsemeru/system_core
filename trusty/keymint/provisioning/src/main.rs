@@ -17,13 +17,16 @@
 use android_trusty_provisioning::aidl::android::trusty::provisioning::IProvisioning::{
     AttestationIds::AttestationIds, IProvisioning,
 };
-use anyhow::{Context, Result};
+use anyhow::{ensure, Context, Result};
 use binder::{self, AccessorProvider, Strong};
+use cbor_util::{deserialize, value_to_bytes, value_to_map, value_to_text};
 use clap::{Args, Parser, Subcommand};
+use der::{Decode, Reader};
 use log::{error, info, LevelFilter};
 use rustutils::android::system_properties;
 use std::fs;
 use std::path::{Path, PathBuf};
+use x509_cert::Certificate;
 
 const ACCESSOR_SERVICE_NAME: &str = "android.os.IAccessor/IProvisioning/security_vm_keymint";
 const INTERNAL_RPC_SERVICE_NAME: &str =
@@ -37,7 +40,7 @@ struct Cli {
     action: Action,
 }
 
-#[derive(clap::ValueEnum, Clone, Debug)]
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq)]
 enum UdsCertsTarget {
     /// Provision UDS certificates to the host's persistent storage.
     Host,
@@ -56,6 +59,10 @@ enum Action {
     /// Appends UDS certificate chains.
     #[clap(visible_alias = "append-uds-certs")]
     AppendUdsCerts(AppendUdsCertsArgs),
+
+    /// Fetch UDS certificates from the host persistence layer
+    #[clap(visible_alias = "get-uds-certs")]
+    GetUdsCerts(UdsCertsArgs),
 }
 
 #[derive(Args, Clone, Debug)]
@@ -65,6 +72,12 @@ struct AppendUdsCertsArgs {
     input_file: PathBuf,
 
     /// The target for provisioning the UDS certificates.
+    #[arg(long, value_enum)]
+    target: UdsCertsTarget,
+}
+
+#[derive(Args, Clone, Debug)]
+struct UdsCertsArgs {
     #[arg(long, value_enum)]
     target: UdsCertsTarget,
 }
@@ -142,6 +155,9 @@ fn try_main() -> Result<()> {
         }
         Action::AppendUdsCerts(args) => {
             append_uds_certs(args)?;
+        }
+        Action::GetUdsCerts(args) => {
+            print_uds_certs(args)?;
         }
     }
     info!("Completed command successfully: {:?}", cli.action);
@@ -241,4 +257,40 @@ fn collect_attestation_ids(args: &AttestationIdsArgs) -> Result<AttestationIds> 
 
 fn get_prop(prop_name: &str) -> Result<Vec<u8>> {
     Ok(system_properties::read(prop_name)?.unwrap_or_default().into())
+}
+
+fn print_uds_certs(args: &UdsCertsArgs) -> Result<()> {
+    ensure!(args.target == UdsCertsTarget::Host, "Only --target host is supported");
+
+    let uds_certs = fs::read(HOST_UDS_CERTS_PATH)
+        .with_context(|| format!("Read UdsCerts from {}", HOST_UDS_CERTS_PATH))?;
+
+    let uds_certs_value = deserialize(&uds_certs).context("UdsCerts deserialize CBOR value")?;
+    let uds_certs_map = value_to_map(uds_certs_value, "UdsCerts CBOR value to map")?;
+
+    if uds_certs_map.is_empty() {
+        println!("No UDS certificates found in {}.", HOST_UDS_CERTS_PATH);
+        return Ok(());
+    }
+
+    for (signer_name, certs) in uds_certs_map {
+        let signer = value_to_text(signer_name, "UdsCerts get signer name")?;
+        let certs = value_to_bytes(certs, "UdsCerts get certificate bytes")?;
+
+        println!("SignerName: {}", signer);
+
+        print_certs(&certs)?;
+    }
+    Ok(())
+}
+
+fn print_certs(certs: &[u8]) -> Result<()> {
+    let mut reader = der::SliceReader::new(certs)?;
+    while !reader.is_finished() {
+        let cert_bytes = reader.tlv_bytes()?;
+        let certificate =
+            Certificate::from_der(cert_bytes).context("Parse certificate from DER")?;
+        println!("{:#?}", certificate);
+    }
+    Ok(())
 }

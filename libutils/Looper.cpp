@@ -78,6 +78,7 @@ Looper::Looper(bool allowNonCallbacks)
       mSendingMessage(false),
       mPolling(false),
       mEpollRebuildRequired(false),
+      mRequestsGeneration(0),
       mNextRequestSeq(WAKE_EVENT_FD_SEQ + 1),
       mResponseIndex(0),
       mNextMessageUptime(LLONG_MAX) {
@@ -163,10 +164,14 @@ void Looper::scheduleEpollRebuildLocked() {
 int Looper::pollOnce(int timeoutMillis, int* outFd, int* outEvents, void** outData) {
     int result = 0;
     for (;;) {
+        const uint64_t generation = mRequestsGeneration.load(std::memory_order_acquire);
         while (mResponseIndex < mResponses.size()) {
             const Response& response = mResponses.itemAt(mResponseIndex++);
             int ident = response.request.ident;
             if (ident >= 0) {
+                if (isResponseStale(generation, response.seq)) {
+                    continue;
+                }
                 int fd = response.request.fd;
                 int events = response.events;
                 void* data = response.request.data;
@@ -334,6 +339,7 @@ Done: ;
     }
 
     // Release lock.
+    const uint64_t generation = mRequestsGeneration.load(std::memory_order_acquire);
     mLock.unlock();
 
     // Invoke all response callbacks.
@@ -347,6 +353,10 @@ Done: ;
             ALOGD("%p ~ pollOnce - invoking fd event callback %p: fd=%d, events=0x%x, data=%p",
                     this, response.request.callback.get(), fd, events, data);
 #endif
+            if (isResponseStale(generation, response.seq)) {
+                continue;
+            }
+
             // Invoke the callback.  Note that the file descriptor may be closed by
             // the callback (and potentially even reused) before the function returns so
             // we need to be a little careful when removing the file descriptor afterwards.
@@ -455,6 +465,8 @@ int Looper::addFd(int fd, int ident, int events, const sp<LooperCallback>& callb
         request.events = events;
         request.callback = callback;
         request.data = data;
+
+        mRequestsGeneration.fetch_add(1, std::memory_order_release);
 
         epoll_event eventItem = createEpollEvent(request.getEpollEvents(), seq);
         auto seq_it = mSequenceNumberByFd.find(fd);
@@ -572,6 +584,7 @@ int Looper::removeSequenceNumberLocked(SequenceNumber seq) {
     // updating the epoll set so that we avoid accidentally leaking callbacks.
     mRequests.erase(request_it);
     mSequenceNumberByFd.erase(fd);
+    mRequestsGeneration.fetch_add(1, std::memory_order_release);
 
     int epollResult = epoll_ctl(mEpollFd.get(), EPOLL_CTL_DEL, fd, nullptr);
     if (epollResult < 0) {
@@ -603,6 +616,16 @@ int Looper::removeSequenceNumberLocked(SequenceNumber seq) {
         }
     }
     return 1;
+}
+
+bool Looper::isResponseStale(const uint64_t generation, const SequenceNumber& seq) const {
+    // Optimization: If the generation hasn't changed, we know the request is still
+    // valid and we can skip acquiring the lock and performing a map lookup.
+    if (mRequestsGeneration.load(std::memory_order_acquire) == generation) {
+        return false;
+    }
+    AutoMutex _l(mLock);
+    return mRequests.find(seq) == mRequests.end();
 }
 
 void Looper::sendMessage(const sp<MessageHandler>& handler, const Message& message) {
