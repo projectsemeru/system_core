@@ -85,7 +85,7 @@ Looper::Looper(bool allowNonCallbacks)
     mWakeEventFd.reset(eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC));
     LOG_ALWAYS_FATAL_IF(mWakeEventFd.get() < 0, "Could not make wake event fd: %s", strerror(errno));
 
-    AutoMutex _l(mLock);
+    std::scoped_lock _l(mLock);
     rebuildEpollLocked();
 }
 
@@ -236,7 +236,7 @@ int Looper::pollInner(int timeoutMillis) {
     int epollFd;
     bool hasRequests;
     {
-        AutoMutex _l(mLock);
+        std::scoped_lock _l(mLock);
         epollFd = mEpollFd.get();
         hasRequests = !mRequests.empty();
     }
@@ -371,7 +371,7 @@ Done: ;
             // we need to be a little careful when removing the file descriptor afterwards.
             int callbackResult = response.request.callback->handleEvent(fd, events, data);
             if (callbackResult == 0) {
-                AutoMutex _l(mLock);
+                std::scoped_lock _l(mLock);
                 removeSequenceNumberLocked(response.seq);
             }
 
@@ -463,7 +463,7 @@ int Looper::addFd(int fd, int ident, int events, const sp<LooperCallback>& callb
     }
 
     { // acquire lock
-        AutoMutex _l(mLock);
+        std::scoped_lock _l(mLock);
         // There is a sequence number reserved for the WakeEventFd.
         if (mNextRequestSeq == WAKE_EVENT_FD_SEQ) mNextRequestSeq++;
         const SequenceNumber seq = mNextRequestSeq++;
@@ -531,7 +531,7 @@ int Looper::addFd(int fd, int ident, int events, const sp<LooperCallback>& callb
 }
 
 bool Looper::getFdStateDebug(int fd, int* ident, int* events, sp<LooperCallback>* cb, void** data) {
-    AutoMutex _l(mLock);
+    std::scoped_lock _l(mLock);
     if (auto seqNumIt = mSequenceNumberByFd.find(fd); seqNumIt != mSequenceNumberByFd.cend()) {
         if (auto reqIt = mRequests.find(seqNumIt->second); reqIt != mRequests.cend()) {
             const Request& request = reqIt->second;
@@ -546,7 +546,7 @@ bool Looper::getFdStateDebug(int fd, int* ident, int* events, sp<LooperCallback>
 }
 
 int Looper::removeFd(int fd) {
-    AutoMutex _l(mLock);
+    std::scoped_lock _l(mLock);
     const auto& it = mSequenceNumberByFd.find(fd);
     if (it == mSequenceNumberByFd.end()) {
         return 0;
@@ -555,7 +555,7 @@ int Looper::removeFd(int fd) {
 }
 
 int Looper::repoll(int fd) {
-    AutoMutex _l(mLock);
+    std::scoped_lock _l(mLock);
     const auto& it = mSequenceNumberByFd.find(fd);
     if (it == mSequenceNumberByFd.end()) {
         return 0;
@@ -633,7 +633,7 @@ bool Looper::isResponseStale(const uint64_t generation, const SequenceNumber& se
     if (mRequestsGeneration.load(std::memory_order_acquire) == generation) {
         return false;
     }
-    AutoMutex _l(mLock);
+    std::scoped_lock _l(mLock);
     return mRequests.find(seq) == mRequests.end();
 }
 
@@ -657,7 +657,7 @@ void Looper::sendMessageAtTime(nsecs_t uptime, const sp<MessageHandler>& handler
 
     size_t i = 0;
     { // acquire lock
-        AutoMutex _l(mLock);
+        std::scoped_lock _l(mLock);
 
         size_t messageCount = mMessageEnvelopes.size();
         while (i < messageCount && uptime >= mMessageEnvelopes[i].uptime) {
@@ -688,7 +688,7 @@ void Looper::removeMessages(const sp<MessageHandler>& handler) {
 #endif
 
     { // acquire lock
-        AutoMutex _l(mLock);
+        std::scoped_lock _l(mLock);
 
         std::erase_if(mMessageEnvelopes,
                       [&](const MessageEnvelope& envelope) { return envelope.handler == handler; });
@@ -701,7 +701,7 @@ void Looper::removeMessages(const sp<MessageHandler>& handler, int what) {
 #endif
 
     { // acquire lock
-        AutoMutex _l(mLock);
+        std::scoped_lock _l(mLock);
 
         std::erase_if(mMessageEnvelopes, [&](const MessageEnvelope& envelope) {
             return envelope.handler == handler && envelope.message.what == what;

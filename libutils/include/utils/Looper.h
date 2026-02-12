@@ -17,16 +17,17 @@
 #ifndef UTILS_LOOPER_H
 #define UTILS_LOOPER_H
 
+#include <sys/epoll.h>
 #include <utils/RefBase.h>
 #include <utils/Timers.h>
 #include <utils/Vector.h>
 #include <utils/threads.h>
 
-#include <sys/epoll.h>
-
+#include <android-base/thread_annotations.h>
 #include <android-base/unique_fd.h>
 
 #include <atomic>
+#include <mutex>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -475,7 +476,7 @@ public:
     const bool mAllowNonCallbacks; // immutable
 
     android::base::unique_fd mWakeEventFd;  // immutable
-    mutable Mutex mLock;
+    mutable std::mutex mLock;
 
     std::vector<MessageEnvelope> mMessageEnvelopes GUARDED_BY(mLock);
     bool mSendingMessage GUARDED_BY(mLock);
