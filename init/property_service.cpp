@@ -952,6 +952,17 @@ static void initialize_microdroid_properties(std::map<std::string, std::string>*
         return;
     }
 
+    // To ensure deterministic output of the microdroid image, build identity information is not
+    // included in the static build.prop. Instead, they are injected from the host via kernel
+    // parameters.
+    if (auto id = GetProperty("ro.boot.microdroid.build_id", ""); !id.empty()) {
+        (*properties)["ro.build.id"] = id;
+    }
+    if (auto incremental = GetProperty("ro.boot.microdroid.build_version_incremental", "");
+        !incremental.empty()) {
+        (*properties)["ro.build.version.incremental"] = incremental;
+    }
+
     char hostname_cstr[HOST_NAME_MAX];
     if (gethostname(hostname_cstr, sizeof(hostname_cstr)) != 0) {
         PLOG(ERROR) << "Failed to gethostname";
