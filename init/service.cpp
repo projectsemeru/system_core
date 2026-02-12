@@ -836,7 +836,7 @@ void Service::SetMountNamespace() {
     }
     // Services in the following list start in the "default" mount namespace.
     // Note that they should use bootstrap bionic if they start before APEXes are ready.
-    static const std::set<std::string> kUseDefaultMountNamespace = {
+    [[clang::no_destroy]] static const std::set<std::string> kUseDefaultMountNamespace = {
             "ueventd",           // load firmwares from APEXes
             "hwservicemanager",  // load VINTF fragments from APEXes
             "servicemanager",    // load VINTF fragments from APEXes

@@ -91,7 +91,8 @@ namespace init {
 
 static bool shutting_down = false;
 
-static const std::set<std::string> kDebuggingServices{"tombstoned", "logd", "adbd", "console"};
+[[clang::no_destroy]] static const std::set<std::string> kDebuggingServices{"tombstoned", "logd",
+                                                                            "adbd", "console"};
 
 static void PersistRebootReason(const char* reason, bool write_to_property) {
     if (write_to_property) {
@@ -471,7 +472,7 @@ static void RebootMonitorThread(unsigned int cmd, const Timer& shutdown_timer) {
 
 // Create reboot/shutdown monitor thread
 static void StartRebootMonitorThread(unsigned int cmd, const Timer& shutdown_timer) {
-    static std::atomic_flag started{};
+    [[clang::no_destroy]] static std::atomic_flag started{};
 
     // Only allow the monitor to be started once.
     if (started.test_and_set(std::memory_order_acquire)) {

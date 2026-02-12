@@ -37,7 +37,7 @@ size_t ActionManager::CheckAllCommands() {
 }
 
 ActionManager& ActionManager::GetInstance() {
-    static ActionManager instance;
+    [[clang::no_destroy]] static ActionManager instance;
     return instance;
 }
 
