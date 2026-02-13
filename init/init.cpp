@@ -489,7 +489,11 @@ static Result<void> UpdateApexLinkerConfig(const std::string& apex_name) {
     if (access(bin_path.c_str(), R_OK) != 0) {
         return {};
     }
+#if defined(RELEASE_DEPRECATE_RUNTIME_APEX)
+    const char* linkerconfig_binary = "/system/bin/linkerconfig";
+#else
     const char* linkerconfig_binary = "/apex/com.android.runtime/bin/linkerconfig";
+#endif
     const char* linkerconfig_target = "/linkerconfig";
     const char* arguments[] = {linkerconfig_binary, "--target", linkerconfig_target, "--apex",
                                apex_name.c_str(),   "--strict"};
