@@ -17,18 +17,20 @@
 #ifndef UTILS_LOOPER_H
 #define UTILS_LOOPER_H
 
+#include <sys/epoll.h>
 #include <utils/RefBase.h>
 #include <utils/Timers.h>
 #include <utils/Vector.h>
 #include <utils/threads.h>
 
-#include <sys/epoll.h>
-
+#include <android-base/thread_annotations.h>
 #include <android-base/unique_fd.h>
 
 #include <atomic>
+#include <mutex>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace android {
 
@@ -474,22 +476,22 @@ public:
     const bool mAllowNonCallbacks; // immutable
 
     android::base::unique_fd mWakeEventFd;  // immutable
-    mutable Mutex mLock;
+    mutable std::mutex mLock;
 
-    Vector<MessageEnvelope> mMessageEnvelopes; // guarded by mLock
-    bool mSendingMessage; // guarded by mLock
+    std::vector<MessageEnvelope> mMessageEnvelopes GUARDED_BY(mLock);
+    bool mSendingMessage GUARDED_BY(mLock);
 
     // Whether we are currently waiting for work.  Not protected by a lock,
     // any use of it is racy anyway.
     std::atomic<bool> mPolling;
 
-    android::base::unique_fd mEpollFd;  // guarded by mLock but only modified on the looper thread
-    bool mEpollRebuildRequired; // guarded by mLock
+    android::base::unique_fd mEpollFd GUARDED_BY(mLock);  // only modified on the looper thread
+    bool mEpollRebuildRequired GUARDED_BY(mLock);
 
     // Locked maps of fds and sequence numbers monitoring requests.
     // Both maps must be kept in sync at all times.
-    std::unordered_map<SequenceNumber, Request> mRequests;               // guarded by mLock
-    std::unordered_map<int /*fd*/, SequenceNumber> mSequenceNumberByFd;  // guarded by mLock
+    std::unordered_map<SequenceNumber, Request> mRequests GUARDED_BY(mLock);
+    std::unordered_map<int /*fd*/, SequenceNumber> mSequenceNumberByFd GUARDED_BY(mLock);
 
     // The generation of the requests map. Incremented whenever a request is added or removed.
     // This is used as an optimization in the poll loop to avoid acquiring mLock when
@@ -500,20 +502,20 @@ public:
 
     // The sequence number to use for the next fd that is added to the looper.
     // The sequence number 0 is reserved for the WakeEventFd.
-    SequenceNumber mNextRequestSeq;  // guarded by mLock
+    SequenceNumber mNextRequestSeq GUARDED_BY(mLock);
 
     // This state is only used privately by pollOnce and does not require a lock since
     // it runs on a single thread.
-    Vector<Response> mResponses;
+    std::vector<Response> mResponses;
     size_t mResponseIndex;
     nsecs_t mNextMessageUptime; // set to LLONG_MAX when none
 
     int pollInner(int timeoutMillis);
-    int removeSequenceNumberLocked(SequenceNumber seq);  // requires mLock
+    int removeSequenceNumberLocked(SequenceNumber seq) REQUIRES(mLock);
     bool isResponseStale(const uint64_t generation, const SequenceNumber& seq) const;
     void awoken();
-    void rebuildEpollLocked();
-    void scheduleEpollRebuildLocked();
+    void rebuildEpollLocked() REQUIRES(mLock);
+    void scheduleEpollRebuildLocked() REQUIRES(mLock);
 
     static void initEpollEvent(struct epoll_event* eventItem);
 

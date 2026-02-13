@@ -76,3 +76,8 @@ cc_binary {
         "rpmb_dev.desktop.rc",
     ],
 }
+
+cc_binary_host {
+    name: "rpmb_dev.host",
+    defaults: ["rpmb_dev.cc_defaults"],
+}

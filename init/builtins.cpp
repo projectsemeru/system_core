@@ -1252,7 +1252,7 @@ static Result<void> do_perform_apex_config(const BuiltinArguments& args) {
 
     MountNamespace current_mnt_ns = GetCurrentMountNamespace().value_or(NS_BOOTSTRAP);
     // We don't want to parse the same apexes twice in the same mount namespace.
-    static std::map<MountNamespace, bool> apex_parsed;
+    [[clang::no_destroy]] static std::map<MountNamespace, bool> apex_parsed;
     if (!std::exchange(apex_parsed[current_mnt_ns], true)) {
         if (auto st = ParseRcScriptsFromAllApexes(current_mnt_ns == NS_DEFAULT); !st.ok()) {
             LOG(ERROR) << st.error();
@@ -1295,6 +1295,7 @@ static Result<void> do_swapoff(const BuiltinArguments& args) {
 const BuiltinFunctionMap& GetBuiltinFunctionMap() {
     constexpr std::size_t kMax = std::numeric_limits<std::size_t>::max();
     // clang-format off
+    [[clang::no_destroy]]
     static const BuiltinFunctionMap builtin_functions = {
         {"bootchart",               {1,     1,    {false,  do_bootchart}}},
         {"chmod",                   {2,     2,    {true,   do_chmod}}},

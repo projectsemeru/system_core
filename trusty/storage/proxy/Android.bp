@@ -34,7 +34,6 @@ cc_defaults {
         "libbinder_ndk",
         "libcutils",
         "liblog",
-        "libhardware_legacy",
     ],
     header_libs: [
         "libgsi_headers",
@@ -50,6 +49,22 @@ cc_defaults {
         "-Wall",
         "-Werror",
     ],
+    target: {
+        host: {
+            cflags: [
+                "-D_GNU_SOURCE=1",
+            ],
+        },
+        android: {
+            shared_libs: [
+                "libhardware_legacy",
+            ],
+            cflags: [
+                "-DSTORAGEPROXYD_RPMB_MMC_SUPPORT=1",
+                "-DSTORAGEPROXYD_RPMB_UFS_SUPPORT=1",
+            ],
+        },
+    },
 }
 
 cc_binary {
@@ -64,4 +79,9 @@ cc_binary {
     name: "storageproxyd.system",
     defaults: ["storageproxyd.defaults"],
     system_ext_specific: true,
+}
+
+cc_binary_host {
+    name: "storageproxyd_host",
+    defaults: ["storageproxyd.defaults"],
 }
