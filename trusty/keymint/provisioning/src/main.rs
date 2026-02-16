@@ -193,16 +193,38 @@ fn load_uds_certs<P: AsRef<Path>>(path: P) -> Result<Vec<UdsCerts>> {
         .collect()
 }
 
+fn merge_uds_certs<P, Q>(dest_path: P, input_path: Q) -> Result<Vec<UdsCerts>>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+{
+    let dest_path = dest_path.as_ref();
+    let input_path = input_path.as_ref();
+
+    let input_uds_certs = load_uds_certs(input_path)?;
+    let mut existing_uds_certs = if dest_path.exists() {
+        load_uds_certs(dest_path)?
+    } else {
+        info!("Destination {:?} does not exist. Starting with empty certs.", dest_path);
+        Vec::new()
+    };
+
+    for input_cert in input_uds_certs {
+        existing_uds_certs.retain(|c| c.signer_name != input_cert.signer_name);
+        existing_uds_certs.push(input_cert);
+    }
+
+    Ok(existing_uds_certs)
+}
+
 fn append_uds_certs(args: &AppendUdsCertsArgs) -> Result<()> {
     ensure!(args.target == UdsCertsTarget::Host, "Currently only --target host is supported");
 
     let uds_certs_store_path = Path::new(HOST_UDS_CERTS_PATH);
 
-    let new_uds_certs = load_uds_certs(&args.input_file)?;
+    let merged_uds_certs = merge_uds_certs(uds_certs_store_path, &args.input_file)?;
 
-    // TODO(b/467901773): Implement merge logic.
-    // For now, overwrite the 'input_file' content to 'uds_certs_store_path'.
-    let merged_uds_certs = new_uds_certs;
+    ensure!(!merged_uds_certs.is_empty(), "Merged UDS certs is empty");
 
     let merged_uds_certs_map: Vec<(Value, Value)> =
         merged_uds_certs.into_iter().map(|cert| cert.into_cbor_entry()).collect();
@@ -397,6 +419,83 @@ mod tests {
         assert!(res.is_err());
         let err_msg = res.unwrap_err().to_string().to_lowercase();
         assert!(err_msg.contains("map"));
+        Ok(())
+    }
+
+    #[test]
+    fn merging_new_signer_to_empty_store_succeeds() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let dest_path = test_dir.path().join("dest.cbor");
+        let input_path = test_dir.path().join("input.cbor");
+        let input_data = serialize(&cbor!({
+            "s_a" => Value::Bytes(vec![1, 2, 3])
+        })?)?;
+        fs::write(&input_path, input_data)?;
+        let merged = merge_uds_certs(&dest_path, &input_path)?;
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].signer_name, "s_a");
+        assert_eq!(merged[0].certs, vec![1, 2, 3]);
+        Ok(())
+    }
+
+    #[test]
+    fn merging_existing_signer_updates_store_succeeds() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let dest_path = test_dir.path().join("dest.cbor");
+        let input_path = test_dir.path().join("input.cbor");
+        fs::write(&dest_path, serialize(&cbor!({ "s_a" => Value::Bytes(vec![1]) })?)?)?;
+        fs::write(&input_path, serialize(&cbor!({ "s_a" => Value::Bytes(vec![2]) })?)?)?;
+        let merged = merge_uds_certs(&dest_path, &input_path)?;
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].signer_name, "s_a");
+        assert_eq!(merged[0].certs, vec![2]);
+        Ok(())
+    }
+
+    #[test]
+    fn merging_mixed_new_and_existing_signers_succeeds() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let dest_path = test_dir.path().join("dest.cbor");
+        let input_path = test_dir.path().join("input.cbor");
+        fs::write(&dest_path, serialize(&cbor!({ "s_a" => Value::Bytes(vec![1]) })?)?)?;
+        fs::write(
+            &input_path,
+            serialize(&cbor!({
+                "s_a" => Value::Bytes(vec![2]),
+                "s_b" => Value::Bytes(vec![3])
+            })?)?,
+        )?;
+        let merged = merge_uds_certs(&dest_path, &input_path)?;
+        assert_eq!(merged.len(), 2);
+        let s_a = merged.iter().find(|c| c.signer_name == "s_a").unwrap();
+        let s_b = merged.iter().find(|c| c.signer_name == "s_b").unwrap();
+        assert_eq!(s_a.certs, vec![2]);
+        assert_eq!(s_b.certs, vec![3]);
+        Ok(())
+    }
+
+    #[test]
+    fn merging_with_non_text_key_fails() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let dest_path = test_dir.path().join("dest.cbor");
+        let input_path = test_dir.path().join("input.cbor");
+        let input_val = Value::Map(vec![(Value::Integer(1u8.into()), Value::Bytes(vec![5]))]);
+        fs::write(&input_path, serialize(&input_val)?)?;
+        let result = merge_uds_certs(&dest_path, &input_path);
+        assert!(result.is_err());
+        let err_msg = format!("{:#}", result.unwrap_err());
+        assert!(err_msg.to_lowercase().contains("tstr"));
+        Ok(())
+    }
+
+    #[test]
+    fn merging_with_empty_input_file_fails() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let dest_path = test_dir.path().join("dest.cbor");
+        let input_path = test_dir.path().join("input.cbor");
+        fs::write(&input_path, [])?;
+        let result = merge_uds_certs(&dest_path, &input_path);
+        assert!(result.is_err());
         Ok(())
     }
 }
