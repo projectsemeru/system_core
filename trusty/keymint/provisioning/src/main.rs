@@ -19,7 +19,8 @@ use android_trusty_provisioning::aidl::android::trusty::provisioning::IProvision
 };
 use anyhow::{ensure, Context, Result};
 use binder::{self, AccessorProvider, Strong};
-use cbor_util::{deserialize, value_to_bytes, value_to_map, value_to_text};
+use cbor_util::{deserialize, parse_value_map, value_to_bytes, value_to_map, value_to_text};
+use ciborium::value::Value;
 use clap::{Args, Parser, Subcommand};
 use der::{Decode, Reader};
 use log::{error, info, LevelFilter};
@@ -40,7 +41,7 @@ struct Cli {
     action: Action,
 }
 
-#[derive(clap::ValueEnum, Clone, Debug, PartialEq)]
+#[derive(clap::ValueEnum, Clone, Debug, PartialEq, Eq)]
 enum UdsCertsTarget {
     /// Provision UDS certificates to the host's persistent storage.
     Host,
@@ -63,6 +64,23 @@ enum Action {
     /// Fetch UDS certificates from the host persistence layer
     #[clap(visible_alias = "get-uds-certs")]
     GetUdsCerts(UdsCertsArgs),
+}
+
+#[derive(Debug)]
+struct UdsCerts {
+    signer_name: String,
+    // CBOR-encoded array of bstr.
+    certs: Vec<u8>,
+}
+
+impl UdsCerts {
+    fn try_from_cbor(k: Value, v: Value, context: &'static str) -> Result<Self> {
+        Ok(Self { signer_name: value_to_text(k, context)?, certs: value_to_bytes(v, context)? })
+    }
+
+    fn into_cbor_entry(self) -> (Value, Value) {
+        (Value::Text(self.signer_name), Value::Bytes(self.certs))
+    }
 }
 
 #[derive(Args, Clone, Debug)]
@@ -165,31 +183,63 @@ fn try_main() -> Result<()> {
     Ok(())
 }
 
-// TODO(b/467901773): Implement append logic. This currently overwrites the file.
-fn append_uds_certs(args: &AppendUdsCertsArgs) -> Result<()> {
-    let content = fs::read(&args.input_file)
-        .with_context(|| format!("Failed to read input file from {}", args.input_file.display()))?;
+fn load_uds_certs<P: AsRef<Path>>(path: P) -> Result<Vec<UdsCerts>> {
+    let data = fs::read(path.as_ref())
+        .with_context(|| format!("Failed to read file {:?}", path.as_ref()))?;
 
-    match args.target {
-        UdsCertsTarget::Host => {
-            let dest_path = Path::new(HOST_UDS_CERTS_PATH);
+    parse_value_map(&data, "parse Uds certs map")?
+        .into_iter()
+        .map(|(k, v)| UdsCerts::try_from_cbor(k, v, "converting to UdsCerts"))
+        .collect()
+}
 
-            if let Some(parent_dir) = dest_path.parent() {
-                fs::create_dir_all(parent_dir).with_context(|| {
-                    format!("Failed to create parent directory {}", parent_dir.display())
-                })?;
-            }
+fn merge_uds_certs<P, Q>(dest_path: P, input_path: Q) -> Result<Vec<UdsCerts>>
+where
+    P: AsRef<Path>,
+    Q: AsRef<Path>,
+{
+    let dest_path = dest_path.as_ref();
+    let input_path = input_path.as_ref();
 
-            fs::write(dest_path, &content).with_context(|| {
-                format!("Failed to write to destination file {}", dest_path.display())
-            })?;
+    let input_uds_certs = load_uds_certs(input_path)?;
+    let mut existing_uds_certs = if dest_path.exists() {
+        load_uds_certs(dest_path)?
+    } else {
+        info!("Destination {:?} does not exist. Starting with empty certs.", dest_path);
+        Vec::new()
+    };
 
-            info!(
-                "Successfully wrote UDS certs to host persistent storage at {}",
-                dest_path.display()
-            );
-        }
+    for input_cert in input_uds_certs {
+        existing_uds_certs.retain(|c| c.signer_name != input_cert.signer_name);
+        existing_uds_certs.push(input_cert);
     }
+
+    Ok(existing_uds_certs)
+}
+
+fn append_uds_certs(args: &AppendUdsCertsArgs) -> Result<()> {
+    ensure!(args.target == UdsCertsTarget::Host, "Currently only --target host is supported");
+
+    let uds_certs_store_path = Path::new(HOST_UDS_CERTS_PATH);
+
+    let merged_uds_certs = merge_uds_certs(uds_certs_store_path, &args.input_file)?;
+
+    ensure!(!merged_uds_certs.is_empty(), "Merged UDS certs is empty");
+
+    let merged_uds_certs_map: Vec<(Value, Value)> =
+        merged_uds_certs.into_iter().map(|cert| cert.into_cbor_entry()).collect();
+
+    if let Some(parent_dir) = uds_certs_store_path.parent() {
+        fs::create_dir_all(parent_dir)
+            .with_context(|| format!("Failed to create parent directory {:?}", parent_dir))?;
+    }
+
+    let uds_certs_store_file = fs::File::create(uds_certs_store_path)
+        .with_context(|| format!("Failed to create destination file {:?}", uds_certs_store_path))?;
+    ciborium::into_writer(&Value::Map(merged_uds_certs_map), uds_certs_store_file)
+        .with_context(|| "Failed to write CBOR map to file")?;
+
+    info!("Successfully wrote UDS certs to host persistent storage at {:?}", uds_certs_store_path);
     Ok(())
 }
 
@@ -293,4 +343,159 @@ fn print_certs(certs: &[u8]) -> Result<()> {
         println!("{:#?}", certificate);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cbor_util::serialize;
+    use ciborium::cbor;
+    use tempfile::TempDir;
+
+    #[test]
+    fn loading_nonexistent_file_fails() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let file_path = test_dir.path().join("nonexistent.cbor");
+        let result = load_uds_certs(&file_path);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn loading_empty_file_fails() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let file_path = test_dir.path().join("empty.cbor");
+        fs::write(&file_path, [])?;
+        let result = load_uds_certs(&file_path);
+        assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn loading_valid_uds_certs_succeeds() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let file_path = test_dir.path().join("valid.cbor");
+
+        let cert_list_serialized = serialize(&cbor!([b"\x01", b"\x02"])?)?;
+
+        let outer_map = cbor!({
+            "s1" => Value::Bytes(cert_list_serialized)
+        })?;
+
+        fs::write(&file_path, serialize(&outer_map)?)?;
+
+        let certs = load_uds_certs(&file_path)?;
+        assert_eq!(certs.len(), 1);
+        assert_eq!(certs[0].signer_name, "s1");
+
+        let decoded_cert_list: Vec<Vec<u8>> = ciborium::from_reader(&certs[0].certs[..])?;
+        assert_eq!(decoded_cert_list, vec![vec![0x01], vec![0x02]]);
+        Ok(())
+    }
+
+    #[test]
+    fn converting_cbor_with_invalid_types_to_uds_certs_fails() -> Result<()> {
+        let context = "test";
+
+        let bad_key = cbor!(123)?;
+        let val = cbor!(b"\x01")?;
+        assert!(UdsCerts::try_from_cbor(bad_key, val, context).is_err());
+
+        let key = cbor!("s1")?;
+        let bad_val = cbor!("not bytes")?;
+        assert!(UdsCerts::try_from_cbor(key, bad_val, context).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn loading_an_uds_certs_file_with_invalid_type_fails() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let file_path = test_dir.path().join("invalid_type.cbor");
+
+        let value = cbor!([1, 2, 3])?;
+        fs::write(&file_path, serialize(&value)?)?;
+
+        let res = load_uds_certs(&file_path);
+        assert!(res.is_err());
+        let err_msg = res.unwrap_err().to_string().to_lowercase();
+        assert!(err_msg.contains("map"));
+        Ok(())
+    }
+
+    #[test]
+    fn merging_new_signer_to_empty_store_succeeds() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let dest_path = test_dir.path().join("dest.cbor");
+        let input_path = test_dir.path().join("input.cbor");
+        let input_data = serialize(&cbor!({
+            "s_a" => Value::Bytes(vec![1, 2, 3])
+        })?)?;
+        fs::write(&input_path, input_data)?;
+        let merged = merge_uds_certs(&dest_path, &input_path)?;
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].signer_name, "s_a");
+        assert_eq!(merged[0].certs, vec![1, 2, 3]);
+        Ok(())
+    }
+
+    #[test]
+    fn merging_existing_signer_updates_store_succeeds() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let dest_path = test_dir.path().join("dest.cbor");
+        let input_path = test_dir.path().join("input.cbor");
+        fs::write(&dest_path, serialize(&cbor!({ "s_a" => Value::Bytes(vec![1]) })?)?)?;
+        fs::write(&input_path, serialize(&cbor!({ "s_a" => Value::Bytes(vec![2]) })?)?)?;
+        let merged = merge_uds_certs(&dest_path, &input_path)?;
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].signer_name, "s_a");
+        assert_eq!(merged[0].certs, vec![2]);
+        Ok(())
+    }
+
+    #[test]
+    fn merging_mixed_new_and_existing_signers_succeeds() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let dest_path = test_dir.path().join("dest.cbor");
+        let input_path = test_dir.path().join("input.cbor");
+        fs::write(&dest_path, serialize(&cbor!({ "s_a" => Value::Bytes(vec![1]) })?)?)?;
+        fs::write(
+            &input_path,
+            serialize(&cbor!({
+                "s_a" => Value::Bytes(vec![2]),
+                "s_b" => Value::Bytes(vec![3])
+            })?)?,
+        )?;
+        let merged = merge_uds_certs(&dest_path, &input_path)?;
+        assert_eq!(merged.len(), 2);
+        let s_a = merged.iter().find(|c| c.signer_name == "s_a").unwrap();
+        let s_b = merged.iter().find(|c| c.signer_name == "s_b").unwrap();
+        assert_eq!(s_a.certs, vec![2]);
+        assert_eq!(s_b.certs, vec![3]);
+        Ok(())
+    }
+
+    #[test]
+    fn merging_with_non_text_key_fails() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let dest_path = test_dir.path().join("dest.cbor");
+        let input_path = test_dir.path().join("input.cbor");
+        let input_val = Value::Map(vec![(Value::Integer(1u8.into()), Value::Bytes(vec![5]))]);
+        fs::write(&input_path, serialize(&input_val)?)?;
+        let result = merge_uds_certs(&dest_path, &input_path);
+        assert!(result.is_err());
+        let err_msg = format!("{:#}", result.unwrap_err());
+        assert!(err_msg.to_lowercase().contains("tstr"));
+        Ok(())
+    }
+
+    #[test]
+    fn merging_with_empty_input_file_fails() -> Result<()> {
+        let test_dir = TempDir::new()?;
+        let dest_path = test_dir.path().join("dest.cbor");
+        let input_path = test_dir.path().join("input.cbor");
+        fs::write(&input_path, [])?;
+        let result = merge_uds_certs(&dest_path, &input_path);
+        assert!(result.is_err());
+        Ok(())
+    }
 }
