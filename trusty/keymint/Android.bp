@@ -79,11 +79,6 @@ rust_binary {
     name: "android.hardware.security.keymint-service.trusty_system_vm",
     system_ext_specific: true,
     defaults: ["android.hardware.security.keymint-service.rust.trusty.default"],
-    // TODO(b/487994455): remove `init_rc` to decouple AL config
-    init_rc: select(soong_config_variable("trusty_system_vm", "decouple_init_rc_from_keymint_hal"), {
-        true: [],
-        default: ["android.hardware.security.keymint-service.trusty_system_vm.rc"],
-    }),
     features: select((
         soong_config_variable("trusty_system_vm", "buildtype"),
         soong_config_variable("trusty_system_vm", "keymint_rot_nonsecure"),
