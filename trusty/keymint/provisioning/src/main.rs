@@ -15,9 +15,9 @@
 //! KeyMint provisioning tool
 
 use android_trusty_provisioning::aidl::android::trusty::provisioning::IProvisioning::{
-    AttestationIds::AttestationIds, IProvisioning,
+    AttestationIds::AttestationIds, IProvisioning, SigningAlgorithm::SigningAlgorithm,
 };
-use anyhow::{ensure, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use binder::{self, AccessorProvider, Strong};
 use cbor_util::{deserialize, parse_value_map, value_to_bytes, value_to_map, value_to_text};
 use ciborium::value::Value;
@@ -28,6 +28,8 @@ use rustutils::android::system_properties;
 use std::fs;
 use std::path::{Path, PathBuf};
 use x509_cert::Certificate;
+
+mod attestation;
 
 const ACCESSOR_SERVICE_NAME: &str = "android.os.IAccessor/IProvisioning/security_vm_keymint";
 const INTERNAL_RPC_SERVICE_NAME: &str =
@@ -64,6 +66,17 @@ enum Action {
     /// Fetch UDS certificates from the host persistence layer
     #[clap(visible_alias = "get-uds-certs")]
     GetUdsCerts(UdsCertsArgs),
+
+    /// Parse xml and set attestation keys and certificates
+    #[clap(visible_alias = "set-attestation-keys")]
+    SetAttestationKeys(SetAttestationKeysArgs),
+}
+
+#[derive(Args, Clone, Debug)]
+struct SetAttestationKeysArgs {
+    /// Path to the attestation keys data file to provision
+    #[arg(value_hint = clap::ValueHint::FilePath)]
+    input_file: PathBuf,
 }
 
 #[derive(Debug)]
@@ -177,10 +190,42 @@ fn try_main() -> Result<()> {
         Action::GetUdsCerts(args) => {
             print_uds_certs(args)?;
         }
+        Action::SetAttestationKeys(args) => {
+            set_attestation_keys(&provisioning_service, args)?;
+        }
     }
     info!("Completed command successfully: {:?}", cli.action);
 
     Ok(())
+}
+
+fn set_attestation_keys(
+    provisioning_service: &Strong<dyn IProvisioning>,
+    args: &SetAttestationKeysArgs,
+) -> Result<()> {
+    let file = fs::File::open(&args.input_file)
+        .with_context(|| format!("Failed to open input file from {}", args.input_file.display()))?;
+    let attestation_keys = attestation::get_attestation_keys(file)?;
+    for attestation_key in attestation_keys {
+        let algorithm = get_signing_algorithm(attestation_key.algorithm)?;
+        // TODO(b/478175656): update provisionAttestationKey api to accept certificate chain
+        // to consolidate provisioning of key material, clearing of existing cert chain
+        // and provision the new cert chain
+        provisioning_service.provisionAttestationKey(algorithm, &attestation_key.key)?;
+
+        for cert in attestation_key.certs {
+            provisioning_service.appendAttestationCertChain(algorithm, &cert)?;
+        }
+    }
+    Ok(())
+}
+
+fn get_signing_algorithm(algorithm: String) -> Result<SigningAlgorithm> {
+    match algorithm.as_str() {
+        "rsa" => Ok(SigningAlgorithm::RSA),
+        "ecdsa" => Ok(SigningAlgorithm::EC),
+        unknown_algorithm => bail!("Unknown Algorithm {}", unknown_algorithm),
+    }
 }
 
 fn load_uds_certs<P: AsRef<Path>>(path: P) -> Result<Vec<UdsCerts>> {
