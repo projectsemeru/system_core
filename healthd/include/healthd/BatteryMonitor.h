@@ -85,6 +85,8 @@ class BatteryMonitor {
     int setChargingPolicy(int value);
     int getChargingPolicy();
     int getBatteryHealthData(int id);
+    int getFullChargeUah() const;
+    int getFullChargeDesignCapacityUah() const;
 
     status_t getSerialNumber(std::optional<std::string>* out);
     base::Result<std::optional<std::string>, base::Errno, false> getManufacturer() const;

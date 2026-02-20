@@ -455,8 +455,7 @@ void BatteryMonitor::updateValues(void) {
     mHealthInfo->batteryCurrentMicroamps =
             tryGetIntField(mHealthdConfig->batteryCurrentNowPath).value_or(0);
 
-    mHealthInfo->batteryFullChargeUah =
-            tryGetIntField(mHealthdConfig->batteryFullChargePath).value_or(0);
+    mHealthInfo->batteryFullChargeUah = getFullChargeUah();
 
     mHealthInfo->batteryCycleCount =
             tryGetIntField(mHealthdConfig->batteryCycleCountPath).value_or(0);
@@ -476,8 +475,7 @@ void BatteryMonitor::updateValues(void) {
                 HealthInfo::BATTERY_CHARGE_TIME_TO_FULL_NOW_SECONDS_UNSUPPORTED);
     }
 
-    mHealthInfo->batteryFullChargeDesignCapacityUah =
-            tryGetIntField(mHealthdConfig->batteryFullChargeDesignCapacityUahPath).value_or(0);
+    mHealthInfo->batteryFullChargeDesignCapacityUah = getFullChargeDesignCapacityUah();
 
     mBatteryHealthStatus = tryGetIntField(mHealthdConfig->batteryHealthStatusPath).value_or(0);
 
@@ -819,6 +817,14 @@ base::Result<int64_t, base::Errno, false> BatteryMonitor::getVoltageMinDesign() 
         return 0;
     }
     return res.error();
+}
+
+int BatteryMonitor::getFullChargeUah() const {
+    return tryGetIntField(mHealthdConfig->batteryFullChargePath).value_or(0);
+}
+
+int BatteryMonitor::getFullChargeDesignCapacityUah() const {
+    return tryGetIntField(mHealthdConfig->batteryFullChargeDesignCapacityUahPath).value_or(0);
 }
 
 void BatteryMonitor::dumpState(int fd) {
