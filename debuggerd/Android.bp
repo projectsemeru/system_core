@@ -90,7 +90,10 @@ cc_library_static {
 
     export_header_lib_headers: ["libdebuggerd_common_headers"],
     export_include_dirs: ["tombstoned/include"],
-    apex_available: ["com.android.runtime"],
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.runtime",
+    ],
 }
 
 // Core implementation, linked into libdebuggerd_handler and the dynamic linker.
@@ -116,6 +119,7 @@ cc_library_static {
     export_header_lib_headers: ["libdebuggerd_common_headers"],
     export_include_dirs: ["include"],
     apex_available: [
+        "//apex_available:platform",
         "com.android.runtime",
     ],
 }
@@ -328,6 +332,7 @@ cc_library_static {
         },
     },
     apex_available: [
+        "//apex_available:platform",
         "com.android.runtime",
     ],
 }
@@ -487,6 +492,7 @@ cc_binary {
     ],
 
     apex_available: [
+        "//apex_available:platform",
         "com.android.runtime",
     ],
 
