@@ -1197,7 +1197,11 @@ static Result<void> do_mark_post_data(const BuiltinArguments& args) {
 }
 
 static Result<void> GenerateLinkerConfiguration() {
+#if defined(RELEASE_DEPRECATE_RUNTIME_APEX)
+    const char* linkerconfig_binary = "/system/bin/linkerconfig";
+#else
     const char* linkerconfig_binary = "/apex/com.android.runtime/bin/linkerconfig";
+#endif
     const char* linkerconfig_target = "/linkerconfig";
     const char* arguments[] = {linkerconfig_binary, "--target", linkerconfig_target};
 
