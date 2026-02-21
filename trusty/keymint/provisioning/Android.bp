@@ -19,6 +19,7 @@ rust_defaults {
         "liblog_rust",
         "librustutils",
         "libx509_cert",
+        "libxml_rust",
     ],
 }
 
@@ -35,5 +36,6 @@ rust_test {
     rustlibs: [
         "libtempfile",
     ],
+    data: [":trusty_keymaster_soft_attestation_keys"],
     test_suites: ["general-tests"],
 }
