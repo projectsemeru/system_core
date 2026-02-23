@@ -78,7 +78,11 @@ using unique_fd = android::base::unique_fd_impl<FdsanBypassCloser>;
 #define CRASH_DUMP_NAME "crash_dump32"
 #endif
 
+#if defined(RELEASE_DEPRECATE_RUNTIME_APEX)
+#define CRASH_DUMP_PATH "/system/bin/" CRASH_DUMP_NAME
+#else
 #define CRASH_DUMP_PATH "/apex/com.android.runtime/bin/" CRASH_DUMP_NAME
+#endif
 
 // Use raw syscalls to get the pid and tid. The libc wrappers might return a
 // stale cached value in a signal handler (e.g. after a fork), so we avoid them.
