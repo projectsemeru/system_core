@@ -105,6 +105,7 @@ soong_config_module_type {
     bool_variables: [
         "PRODUCT_INSTALL_DEBUG_POLICY_TO_SYSTEM_EXT",
         "release_write_appcompat_override_system_properties",
+        "release_deprecate_runtime_apex",
     ],
     properties: [
         "cflags",
@@ -172,6 +173,9 @@ libinit_cc_defaults {
         },
         release_write_appcompat_override_system_properties: {
             cflags: ["-DWRITE_APPCOMPAT_OVERRIDE_SYSTEM_PROPERTIES"],
+        },
+        release_deprecate_runtime_apex: {
+            cflags: ["-DRELEASE_DEPRECATE_RUNTIME_APEX"],
         },
     },
     static_libs: [
@@ -302,11 +306,6 @@ cc_defaults {
     defaults: ["init_defaults"],
     srcs: ["main.cpp"],
     symlinks: ["ueventd"],
-
-    cflags: select(release_flag("RELEASE_DEPRECATE_RUNTIME_APEX"), {
-        true: ["-DRELEASE_DEPRECATE_RUNTIME_APEX"],
-        false: [],
-    }),
 }
 
 cc_binary {
