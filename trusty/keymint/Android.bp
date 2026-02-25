@@ -87,13 +87,9 @@ rust_binary {
         ("userdebug", true): ["vm_rot_nonsecure"],
         ("eng", true): ["vm_rot_nonsecure"],
         (default, default): [],
-    }) + select((
-        soong_config_variable("trusty_system_vm", "buildtype"),
-        soong_config_variable("trusty_system_vm", "keymint_reprovisioning_via_hal"),
-    ), {
-        ("userdebug", true): ["vm_reprovisioning_via_hal"],
-        ("eng", true): ["vm_reprovisioning_via_hal"],
-        (default, default): [],
+    }) + select(soong_config_variable("trusty_system_vm", "keymint_reprovisioning_via_hal"), {
+        true: ["vm_reprovisioning_via_hal"],
+        default: [],
     }),
     srcs: [
         "src/keymint_hal_system_vm_main.rs",
