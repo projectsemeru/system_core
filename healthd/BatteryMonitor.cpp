@@ -310,7 +310,7 @@ BatteryChargingState getBatteryChargingState(const char* chargingState) {
     return *ret;
 }
 
-static BatteryMonitor::PowerSupplyType readPowerSupplyType(const String8& path) {
+static BatteryMonitor::PowerSupplyType readRawPowerSupplyType(const String8& path) {
     static SysfsStringEnumMap<int> supplyTypeMap[] = {
             {"Unknown", BatteryMonitor::ANDROID_POWER_SUPPLY_TYPE_UNKNOWN},
             {"Battery", BatteryMonitor::ANDROID_POWER_SUPPLY_TYPE_BATTERY},
@@ -341,6 +341,23 @@ static BatteryMonitor::PowerSupplyType readPowerSupplyType(const String8& path) 
     }
 
     return static_cast<BatteryMonitor::PowerSupplyType>(*ret);
+}
+
+static BatteryMonitor::PowerSupplyType readPowerSupplyType(String8& path, const char* const name) {
+    path.clear();
+    path.appendFormat("%s/%s/type", POWER_SUPPLY_SYSFS_PATH, name);
+    auto out = readRawPowerSupplyType(path);
+
+    if (out == BatteryMonitor::PowerSupplyType::ANDROID_POWER_SUPPLY_TYPE_UNKNOWN) {
+        // An is_dock property can also say that the power supply is a dock,
+        // as long as it is not another known type.
+        path.clear();
+        path.appendFormat("%s/%s/is_dock", POWER_SUPPLY_SYSFS_PATH, name);
+        if (access(path.c_str(), R_OK) == 0) {
+            out = BatteryMonitor::PowerSupplyType::ANDROID_POWER_SUPPLY_TYPE_DOCK;
+        }
+    }
+    return out;
 }
 
 bool getBooleanField(const String8& path) {
@@ -543,9 +560,7 @@ void BatteryMonitor::updateValues(void) {
         String8 path;
         path.appendFormat("%s/%s/online", POWER_SUPPLY_SYSFS_PATH, mChargerNames[i].c_str());
         if (tryGetIntField(path).value_or(0)) {
-            path.clear();
-            path.appendFormat("%s/%s/type", POWER_SUPPLY_SYSFS_PATH, mChargerNames[i].c_str());
-            switch (readPowerSupplyType(path)) {
+            switch (readPowerSupplyType(path, mChargerNames[i])) {
                 case ANDROID_POWER_SUPPLY_TYPE_AC:
                     mHealthInfo->chargerAcOnline = true;
                     break;
@@ -559,14 +574,8 @@ void BatteryMonitor::updateValues(void) {
                     mHealthInfo->chargerDockOnline = true;
                     break;
                 default:
-                    path.clear();
-                    path.appendFormat("%s/%s/is_dock", POWER_SUPPLY_SYSFS_PATH,
-                                      mChargerNames[i].c_str());
-                    if (access(path.c_str(), R_OK) == 0)
-                        mHealthInfo->chargerDockOnline = true;
-                    else
-                        KLOG_WARNING(LOG_TAG, "%s: Unknown power supply type\n",
-                                     mChargerNames[i].c_str());
+                    KLOG_WARNING(LOG_TAG, "%s: Unknown power supply type\n",
+                                 mChargerNames[i].c_str());
             }
             path.clear();
             path.appendFormat("%s/%s/current_max", POWER_SUPPLY_SYSFS_PATH,
@@ -902,10 +911,7 @@ void BatteryMonitor::init(struct healthd_config* hc) {
                          String8(name));
             if (itIgnoreName != hc->ignorePowerSupplyNames.end()) continue;
 
-            // Look for "type" file in each subdirectory
-            path.clear();
-            path.appendFormat("%s/%s/type", POWER_SUPPLY_SYSFS_PATH, name);
-            switch (readPowerSupplyType(path)) {
+            switch (readPowerSupplyType(path, name)) {
                 case ANDROID_POWER_SUPPLY_TYPE_AC:
                 case ANDROID_POWER_SUPPLY_TYPE_USB:
                 case ANDROID_POWER_SUPPLY_TYPE_WIRELESS:
@@ -1117,15 +1123,6 @@ void BatteryMonitor::init(struct healthd_config* hc) {
 
                 case ANDROID_POWER_SUPPLY_TYPE_UNKNOWN:
                     break;
-            }
-
-            // Look for "is_dock" file
-            path.clear();
-            path.appendFormat("%s/%s/is_dock", POWER_SUPPLY_SYSFS_PATH, name);
-            if (access(path.c_str(), R_OK) == 0) {
-                path.clear();
-                path.appendFormat("%s/%s/online", POWER_SUPPLY_SYSFS_PATH, name);
-                if (access(path.c_str(), R_OK) == 0) mChargerNames.add(String8(name));
             }
         }
     }
