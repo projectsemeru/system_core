@@ -558,8 +558,8 @@ static populated_status cgroupIsPopulated(int events_fd) {
 // The default timeout of 2200ms comes from the default number of retries in a previous
 // implementation of this function. The default retry value was 40 for killing and 400 for cgroup
 // removal with 5ms sleeps between each retry.
-static int KillProcessGroup(
-        uid_t uid, pid_t initialPid, int signal, bool once = false,
+int KillProcessGroup(
+        uid_t uid, pid_t initialPid, int signal, bool reclaimMemory = false, bool once = false,
         std::chrono::steady_clock::time_point until = std::chrono::steady_clock::now() + 2200ms) {
     if (uid < 0) {
         LOG(ERROR) << __func__ << ": invalid UID " << uid;
@@ -647,6 +647,12 @@ static int KillProcessGroup(
                          << " after " << kill_duration.count() << " ms";
         }
 
+        if (reclaimMemory) {
+            LOG(INFO) << "Reclaiming from " << cgroup_v2_path;
+            CompactMemcgAction reclaim(CompactMemcgAction::FULL, hierarchy_root_path);
+            reclaim.ExecuteForProcess(uid, initialPid);
+        }
+
         ret = RemoveCgroup(hierarchy_root_path.c_str(), uid, initialPid, true);
         if (ret)
             PLOG(ERROR) << "Unable to remove cgroup " << cgroup_v2_path;
@@ -677,7 +683,7 @@ int killProcessGroup(uid_t uid, pid_t initialPid, int signal) {
 }
 
 int killProcessGroupOnce(uid_t uid, pid_t initialPid, int signal) {
-    return KillProcessGroup(uid, initialPid, signal, true);
+    return KillProcessGroup(uid, initialPid, signal, false, true);
 }
 
 static int createProcessGroupInternal(uid_t uid, pid_t initialPid, std::string cgroup,
