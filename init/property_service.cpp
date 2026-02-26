@@ -791,19 +791,28 @@ static void LoadProperties(char* data, const char* filter, const char* filename,
             }
 
             ucred cr = {.pid = 1, .uid = 0, .gid = 0};
+
+            auto expanded_value = ExpandProps(value);
+            if (!expanded_value.ok()) {
+                LOG(ERROR) << "Could not expand value for property '" << key
+                           << "': " << expanded_value.error();
+                continue;
+            }
+
             std::string error;
-            if (CheckPermissions(key, value, context, cr, &error) == PROP_SUCCESS) {
+            if (CheckPermissions(key, *expanded_value, context, cr, &error) == PROP_SUCCESS) {
                 auto it = properties->find(key);
                 if (it == properties->end()) {
-                    (*properties)[key] = value;
-                } else if (it->second != value) {
+                    (*properties)[key] = std::move(*expanded_value);
+                } else if (it->second != *expanded_value) {
                     LOG(WARNING) << "Overriding previous property '" << key << "':'" << it->second
-                                 << "' with new value '" << value << "'";
-                    it->second = value;
+                                 << "' with new value '" << *expanded_value << "'";
+                    it->second = std::move(*expanded_value);
                 }
             } else {
-                LOG(ERROR) << "Do not have permissions to set '" << key << "' to '" << value
-                           << "' in property file '" << filename << "': " << error;
+                LOG(ERROR) << "Do not have permissions to set '" << key << "' to '"
+                           << *expanded_value << "' in property file '" << filename
+                           << "': " << error;
             }
         }
     }
