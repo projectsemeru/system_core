@@ -241,6 +241,9 @@
     30000                                   /* start of uids allocated to pcc component processes */
 #define AID_PCC_COMPONENT_PROCESS_END 39999 /* end of uids allocated to pcc component processes */
 
+#define AID_PCC_CACHE_GID_START 60000 /* start of gids for pcc to mark cached data */
+#define AID_PCC_CACHE_GID_END 69999   /* end of gids for pcc to mark cached data */
+
 /* use the ranges below to determine whether a process is isolated */
 #define AID_ISOLATED_START 90000 /* start of uids for fully isolated sandboxed processes */
 #define AID_ISOLATED_END 99999   /* end of uids for fully isolated sandboxed processes */
