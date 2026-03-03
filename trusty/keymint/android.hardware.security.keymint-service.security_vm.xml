@@ -7,6 +7,7 @@
     <hal format="aidl" updatable-via-system="true">
         <name>android.hardware.security.secureclock</name>
         <fqname>ISecureClock/default</fqname>
+        <accessor>android.os.IAccessor/ISecureClock/security_vm_keymint</accessor>
     </hal>
     <hal format="aidl" updatable-via-system="true">
         <name>android.hardware.security.keymint</name>
