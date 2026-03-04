@@ -194,7 +194,7 @@ void SysfsPermissions::SetPermissions(const std::string& path) const {
 std::vector<std::string> SysfsPermissions::FindMatchingAttributes(const std::string& path) const {
     glob_t glob_data;
     std::string attribute_glob = path + "/" + attribute_;
-    if (glob(attribute_glob.c_str(), 0, nullptr, &glob_data) < 0) {
+    if (glob(attribute_glob.c_str(), 0, nullptr, &glob_data) != 0) {
         // glob failed, so there are no matching paths.
         return std::vector<std::string>();
     }
