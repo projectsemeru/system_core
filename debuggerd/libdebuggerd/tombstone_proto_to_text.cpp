@@ -703,7 +703,8 @@ bool tombstone_proto_to_text(const Tombstone& tombstone, CallbackType callback,
         owner = StringPrintf("owned by %s 0x%" PRIx64, fd.owner().c_str(), fd.tag());
       }
 
-      CBS("    fd %d: %s (%s)", fd.fd(), fd.path().c_str(), owner ? owner->c_str() : "unowned");
+      CBS("    fd %d: %s (%s) %s", fd.fd(), fd.path().c_str(), owner ? owner->c_str() : "unowned",
+                                   fd.details().c_str());
     }
   }
 

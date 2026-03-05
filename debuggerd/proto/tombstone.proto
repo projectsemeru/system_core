@@ -240,8 +240,9 @@ message FD {
   string path = 2;
   string owner = 3;
   uint64 tag = 4;
+  string details = 5;
 
-  reserved 5 to 999;
+  reserved 6 to 999;
 }
 
 message LogBuffer {
