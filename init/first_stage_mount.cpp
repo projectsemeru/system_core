@@ -426,10 +426,6 @@ bool FirstStageMount::GetDmVerityDevices(std::set<std::string>* devices) {
         if (fstab_entry.fs_type == "overlay") {
             continue;
         }
-        // Skip partitions that don't appear to be block devices.
-        if (!fstab_entry.blk_device.starts_with("/dev/")) {
-            continue;
-        }
         if (fstab_entry.fs_mgr_flags.logical) {
             // Don't try to find logical partitions via uevent regeneration.
             logical_partitions.emplace(basename(fstab_entry.blk_device.c_str()));
