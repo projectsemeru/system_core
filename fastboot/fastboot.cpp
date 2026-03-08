@@ -327,7 +327,7 @@ Result<NetworkSerial, FastbootError> ParseNetworkSerial(const std::string& seria
         net_address = serial.c_str() + strlen("udp:");
         port = udp::kDefaultPort;
     } else {
-        return Error<FastbootError>(FastbootError::Type::NETWORK_SERIAL_WRONG_PREFIX)
+        return Error<FastbootError>(FastbootError::NETWORK_SERIAL_WRONG_PREFIX)
                << "protocol prefix ('tcp:' or 'udp:') is missed: " << serial << ". "
                << "Expected address format:\n"
                << "<protocol>:<address>:<port> (tcp:localhost:5554)";
@@ -336,7 +336,7 @@ Result<NetworkSerial, FastbootError> ParseNetworkSerial(const std::string& seria
     std::string error;
     std::string host;
     if (!android::base::ParseNetAddress(net_address, &host, &port, nullptr, &error)) {
-        return Error<FastbootError>(FastbootError::Type::NETWORK_SERIAL_WRONG_ADDRESS)
+        return Error<FastbootError>(FastbootError::NETWORK_SERIAL_WRONG_ADDRESS)
                << "invalid network address '" << net_address << "': " << error;
     }
 
@@ -370,8 +370,7 @@ static std::unique_ptr<Transport> open_device(const char* local_serial, bool wai
             if (!transport && announce) {
                 LOG(ERROR) << "error: " << error;
             }
-        } else if (network_serial.error().code() ==
-                   FastbootError::Type::NETWORK_SERIAL_WRONG_PREFIX) {
+        } else if (network_serial.error().code() == FastbootError::NETWORK_SERIAL_WRONG_PREFIX) {
             // WRONG_PREFIX is special because it happens when user wants to communicate with USB
             // device
             transport = usb_open(match_fastboot(local_serial));
