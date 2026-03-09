@@ -40,6 +40,7 @@ cc_defaults {
         "toolbox.c",
         "getevent.c",
         "getprop.cpp",
+        "modprobe.cpp",
         "setprop.cpp",
         "start.cpp",
     ],
@@ -50,6 +51,7 @@ cc_defaults {
         "libbase",
     ],
     static_libs: [
+        "libmodprobe",
         "libpropertyinfoparser",
     ],
     cppflags: select(release_flag("RELEASE_NATIVE_FRAMEWORK_PROTOTYPE"), {
@@ -62,6 +64,7 @@ cc_defaults {
     symlinks: [
         "getevent",
         "getprop",
+        "modprobe",
         "setprop",
         "start",
         "stop",
