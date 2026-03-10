@@ -26,6 +26,7 @@
 #include <android-base/properties.h>
 #include <android-base/result.h>
 #include <android-base/strings.h>
+#include <libgsi/libgsi.h>
 
 #include "action_manager.h"
 #include "init.h"
@@ -161,7 +162,14 @@ Result<void> ParseRcScriptsFromAllApexes(bool is_default_mnt_ns) {
 
 bool CanMountApexBeforeData() {
     // Can't mount APEXes before /data without FIEMAP support
-    if (!base::GetBoolProperty("apexd.config.use_fiemap", true)) {
+    if (!base::GetBoolProperty(kApexdUseFiemapProp, true)) {
+        return false;
+    }
+
+    // Disable the feature for DSU/GSI device to avoid using /metadata/apex which is for
+    // the original Android.
+    // TODO(b/487508309)
+    if (gsi::IsGsiRunning()) {
         return false;
     }
 
