@@ -512,6 +512,8 @@ const std::map<std::string, int32_t> kBootReasonMap = {
     {"reboot,ocp,.*", 239},
     {"reboot,ntc,pmic,sub", 240},
     {"reboot,telemtemp,pmic,main", 241},
+    {"reboot,longkey,powerkey,warm", 242},
+    {"reboot,longkey,powerkey,false_alarm", 243},
 };
 
 // Converts a string value representing the reason the system booted to an
