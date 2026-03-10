@@ -369,6 +369,8 @@ static bool MkdirAndChown(const std::string& path, mode_t mode, uid_t uid, gid_t
         return false;
     }
 
+    LOG(INFO) << "Created cgroup " << path;
+
     auto dir = std::unique_ptr<DIR, decltype(&closedir)>(opendir(path.c_str()), closedir);
 
     if (dir == NULL) {
