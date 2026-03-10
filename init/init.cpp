@@ -1219,6 +1219,10 @@ int SecondStageMain(int argc, char** argv) {
         if (android::gsi::GetActiveDsu(&dsu_slot)) {
             SetProperty(gsi::kDsuSlotProp, dsu_slot);
         }
+        // Disable mount-apex-before-data for DSU/GSI device to avoid using /metadata/apex
+        // which is for the original Android.
+        // TODO(b/487508309)
+        SetProperty(kApexdUseFiemapProp, "false");
     }
 
     // This needs to happen before kptr_restrict is raised, as we are trying to
