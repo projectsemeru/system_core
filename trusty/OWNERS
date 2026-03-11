@@ -1,5 +1,4 @@
 # include OWNERS from the top level trusty repo
 include trusty:main:/OWNERS
 
-drysdale@google.com
 mikemcternan@google.com

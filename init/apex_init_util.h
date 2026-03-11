@@ -26,6 +26,8 @@
 namespace android {
 namespace init {
 
+constexpr const char* kApexdUseFiemapProp = "apexd.config.use_fiemap";
+
 // Scans apex_dir (/apex) to get the list of active APEXes.
 std::set<std::string> GetApexListFrom(const std::string& apex_dir);
 
