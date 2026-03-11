@@ -426,12 +426,16 @@ bool FirstStageMount::GetDmVerityDevices(std::set<std::string>* devices) {
         if (fstab_entry.fs_type == "overlay") {
             continue;
         }
+        // Don't try to find logical partitions via uevent regeneration.
         if (fstab_entry.fs_mgr_flags.logical) {
-            // Don't try to find logical partitions via uevent regeneration.
             logical_partitions.emplace(basename(fstab_entry.blk_device.c_str()));
-        } else {
-            devices->emplace(basename(fstab_entry.blk_device.c_str()));
+            continue;
         }
+        // Skip partitions that don't appear to be block devices.
+        if (!fstab_entry.blk_device.starts_with("/dev/")) {
+            continue;
+        }
+        devices->emplace(basename(fstab_entry.blk_device.c_str()));
     }
 
     // Any partitions needed for verifying the partitions used in first stage mount, e.g. vbmeta

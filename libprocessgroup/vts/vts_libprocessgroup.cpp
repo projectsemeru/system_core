@@ -21,14 +21,11 @@
 #include <optional>
 #include <random>
 #include <string>
-#include <vector>
 
 #include <android-base/file.h>
-#include <android-base/strings.h>
 #include <vintf/VintfObject.h>
 
 using android::base::ReadFileToString;
-using android::base::Split;
 using android::base::WriteStringToFile;
 using android::vintf::KernelVersion;
 using android::vintf::RuntimeInfo;
@@ -42,26 +39,6 @@ namespace {
 const std::string CGROUP_V2_ROOT_PATH = "/sys/fs/cgroup";
 
 std::optional<bool> isMemcgV2Enabled() {
-    if (std::string proc_cgroups; ReadFileToString("/proc/cgroups", &proc_cgroups)) {
-        const std::vector<std::string> lines = Split(proc_cgroups, "\n");
-        for (const std::string& line : lines) {
-            if (line.starts_with("memory")) {
-                const bool enabled = line.back() == '1';
-                if (!enabled) return false;
-
-                const std::vector<std::string> memcg_tokens = Split(line, "\t");
-                return memcg_tokens[1] == "0";  // 0 == default hierarchy == v2
-            }
-        }
-        // We know for sure it's not enabled, either because it is mounted as v1 (cgroups.json
-        // override) which would be detected above, or because it was intentionally disabled via
-        // kernel command line (cgroup_disable=memory), or because it's not built in to the kernel
-        // (CONFIG_MEMCG is not set).
-        return false;
-    }
-
-    // Problems accessing /proc/cgroups (sepolicy?) Try checking the root cgroup.controllers file.
-    perror("Warning: Could not read /proc/cgroups");
     if (std::string controllers;
         ReadFileToString(CGROUP_V2_ROOT_PATH + "/cgroup.controllers", &controllers)) {
         return controllers.find("memory") != std::string::npos;

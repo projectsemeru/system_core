@@ -245,18 +245,21 @@ bool SetUserProfiles(uid_t uid, const std::vector<std::string>& profiles) {
 static int RemoveCgroup(const char* cgroup, uid_t uid, pid_t pid, bool v2_path) {
     auto path = ConvertUidPidToPath(cgroup, uid, pid, v2_path);
     int ret = TEMP_FAILURE_RETRY(rmdir(path.c_str()));
+    if (ret) {
+        PLOG(WARNING) << "Unable to remove cgroup " << path;
+        if (errno != ENOENT) return ret;
+        else ret = 0; // This function is idempotent
+    } else {
+        LOG(INFO) << "Removed cgroup " << path;
+    }
 
-    if (!ret && uid >= AID_ISOLATED_START && uid <= AID_ISOLATED_END) {
+    if (uid >= AID_ISOLATED_START && uid <= AID_ISOLATED_END) {
         // Isolated UIDs are unlikely to be reused soon after removal,
         // so free up the kernel resources for the UID level cgroup.
         path = ConvertUidToPath(cgroup, uid, v2_path);
         ret = TEMP_FAILURE_RETRY(rmdir(path.c_str()));
-    }
-
-    if (ret < 0 && errno == ENOENT) {
-        // This function is idempoetent, but still warn here.
-        LOG(WARNING) << "RemoveCgroup: " << path << " does not exist.";
-        ret = 0;
+        if (ret) PLOG(WARNING) << "Unable to remove cgroup " << path;
+        else LOG(INFO) << "Removed cgroup " << path;
     }
 
     return ret;
@@ -290,7 +293,7 @@ static bool RemoveEmptyUidCgroups(const std::string& uid_path) {
             }
 
             auto path = StringPrintf("%s/%s", uid_path.c_str(), dir->d_name);
-            LOG(VERBOSE) << "Removing " << path;
+            LOG(INFO) << "Removing " << path;
             if (rmdir(path.c_str()) == -1) {
                 if (errno != EBUSY) {
                     PLOG(WARNING) << "Failed to remove " << path << " " << errno;
@@ -346,7 +349,7 @@ void removeAllEmptyProcessGroups() {
                     LOG(VERBOSE) << "Skip removing " << path;
                     continue;
                 }
-                LOG(VERBOSE) << "Removing " << path;
+                LOG(INFO) << "Removing " << path;
                 if (rmdir(path.c_str()) == -1 && errno != EBUSY) {
                     PLOG(WARNING) << "Failed to remove " << path;
                 }
@@ -368,6 +371,8 @@ static bool MkdirAndChown(const std::string& path, mode_t mode, uid_t uid, gid_t
         }
         return false;
     }
+
+    LOG(INFO) << "Created cgroup " << path;
 
     auto dir = std::unique_ptr<DIR, decltype(&closedir)>(opendir(path.c_str()), closedir);
 
@@ -654,10 +659,6 @@ int KillProcessGroup(
         }
 
         ret = RemoveCgroup(hierarchy_root_path.c_str(), uid, initialPid, true);
-        if (ret)
-            PLOG(ERROR) << "Unable to remove cgroup " << cgroup_v2_path;
-        else
-            LOG(INFO) << "Removed cgroup " << cgroup_v2_path;
 
         if (isMemoryCgroupSupported() && UsePerAppMemcg()) {
             // This per-application memcg v1 case should eventually be removed after migration to
