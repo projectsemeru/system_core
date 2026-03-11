@@ -346,7 +346,7 @@ bool OpenSplitPolicy(PolicyFile* policy_file) {
     std::vector<const char*> compile_args {
         "/system/bin/secilc",
         use_userdebug_policy ? *userdebug_plat_sepolicy : plat_policy_cil_file,
-        "-m", "-M", "true", "-G", "-N",
+        "-m", "-M", "true", "-G", "-N", "-v",
         "-c", version_as_string.c_str(),
         plat_mapping_file.c_str(),
         "-o", compiled_sepolicy,
