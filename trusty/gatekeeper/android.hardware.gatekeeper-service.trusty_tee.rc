@@ -6,3 +6,8 @@ service vendor.gatekeeper_tee \
     class hal
     user system
     group system
+
+# legacy cpp implementation through APEX
+on post-fs && property:ro.boot.vendor.apex.com.android.hardware.gatekeeper=\
+com.android.hardware.gatekeeper.trusty_tee
+    enable vendor.gatekeeper_tee

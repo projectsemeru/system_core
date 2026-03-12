@@ -32,14 +32,33 @@
 #include <vector>
 
 #include <android-base/file.h>
+#include <android-base/strings.h>
 #include <log/log.h>
 #include <unwindstack/Memory.h>
 
 #include "libdebuggerd/utility.h"
 #include "private/bionic_fdsan.h"
 
+static void extract_bpf_prog_fd_details(const std::string& fdinfo_path,
+                                        std::optional<std::string>& details) {
+
+  if (std::string fdinfo; android::base::ReadFileToString(fdinfo_path, &fdinfo)) {
+    const std::string key = "prog_id:";
+    const std::string::size_type pos = fdinfo.find(key);
+    if (pos != std::string::npos) {
+      const std::string::size_type val_start = pos + key.length();
+      const std::string::size_type line_end = fdinfo.find('\n', val_start);
+      if (line_end != std::string::npos) {
+        details = "(" + key + " " +
+          android::base::Trim(fdinfo.substr(val_start, line_end - val_start)) + ")";
+      }
+    }
+  }
+}
+
 void populate_open_files_list(OpenFilesList* list, pid_t pid) {
-  std::string fd_dir_name = "/proc/" + std::to_string(pid) + "/fd";
+  const std::string procfs_dir = "/proc/" + std::to_string(pid);
+  const std::string fd_dir_name = procfs_dir + "/fd";
   std::unique_ptr<DIR, int (*)(DIR*)> dir(opendir(fd_dir_name.c_str()), closedir);
   if (dir == nullptr) {
     ALOGE("failed to open directory %s: %s", fd_dir_name.c_str(), strerror(errno));
@@ -60,6 +79,11 @@ void populate_open_files_list(OpenFilesList* list, pid_t pid) {
     } else {
       (*list)[fd].path = "???";
       ALOGE("failed to readlink %s: %s", path.c_str(), strerror(errno));
+    }
+
+    if (target == "anon_inode:bpf-prog") {
+      extract_bpf_prog_fd_details(
+        procfs_dir + "/fdinfo/" + de->d_name, (*list)[fd].details);
     }
   }
 }

@@ -549,6 +549,11 @@ static void dump_open_fds(Tombstone* tombstone, const OpenFilesList* open_files)
         f.set_tag(value);
       }
 
+      const std::optional<std::string>& details = entry.details;
+      if (details) {
+        f.set_details(*details);
+      }
+
       *tombstone->add_open_fds() = f;
     }
   }

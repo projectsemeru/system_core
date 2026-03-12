@@ -1234,7 +1234,6 @@ int SecondStageMain(int argc, char** argv) {
     Service::OpenAndSaveStaticKallsymsFd();
 
     am.QueueBuiltinAction(SetupCgroupsAction, "SetupCgroups");
-    am.QueueBuiltinAction(TestPerfEventSelinuxAction, "TestPerfEventSelinux");
     am.QueueEventTrigger("early-init");
     am.QueueBuiltinAction(ConnectEarlyStageSnapuserdAction, "ConnectEarlyStageSnapuserd");
 
