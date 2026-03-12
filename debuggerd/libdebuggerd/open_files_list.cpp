@@ -19,6 +19,7 @@
 #include "libdebuggerd/open_files_list.h"
 
 #include <android/fdsan.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
@@ -41,19 +42,34 @@
 
 static void extract_bpf_prog_fd_details(const std::string& fdinfo_path,
                                         std::optional<std::string>& details) {
-
-  if (std::string fdinfo; android::base::ReadFileToString(fdinfo_path, &fdinfo)) {
-    const std::string key = "prog_id:";
-    const std::string::size_type pos = fdinfo.find(key);
-    if (pos != std::string::npos) {
-      const std::string::size_type val_start = pos + key.length();
-      const std::string::size_type line_end = fdinfo.find('\n', val_start);
-      if (line_end != std::string::npos) {
-        details = "(" + key + " " +
-          android::base::Trim(fdinfo.substr(val_start, line_end - val_start)) + ")";
-      }
-    }
+  std::string fdinfo;
+  if (!android::base::ReadFileToString(fdinfo_path, &fdinfo)) {
+    return;
   }
+
+  static const std::string key("prog_id:");
+  size_t pos = fdinfo.find(key);
+  if (pos == std::string::npos) {
+    return;
+  }
+  if (pos != 0 && fdinfo[pos - 1] != '\n') {
+    // This key is not just prog_id, so try and find an exact match.
+    pos = fdinfo.find("\n" + key, pos + key.length());
+    if (pos == std::string::npos) {
+      return;
+    }
+    ++pos;
+  }
+  pos += key.length();
+
+  while (isspace(fdinfo[pos])) {
+    pos++;
+  }
+  size_t line_end = fdinfo.find('\n', pos);
+  if (line_end == std::string::npos) {
+    line_end = fdinfo.length();
+  }
+  details = key + " " + fdinfo.substr(pos, line_end - pos);
 }
 
 void populate_open_files_list(OpenFilesList* list, pid_t pid) {
