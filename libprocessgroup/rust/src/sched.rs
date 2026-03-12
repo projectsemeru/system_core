@@ -20,6 +20,7 @@ use core::ffi::c_int;
 /// Android scheduling policy constants
 ///
 /// See: system/core/libprocessgroup/include/processgroup/sched_policy.h
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub enum SchedPolicy {
     /// Default scheduling policy for non-system processes
