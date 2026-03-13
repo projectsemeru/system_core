@@ -98,6 +98,11 @@
       "File": "cgroup.freeze"
     },
     {
+      "Name": "CgroupKill",
+      "Controller": "cgroup2",
+      "File": "cgroup.kill"
+    },
+    {
       "Name": "CgroupProcs",
       "Controller": "cgroup2",
       "File": "cgroup.procs"
