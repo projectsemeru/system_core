@@ -282,6 +282,26 @@ cc_library_static {
         "avf_build_flags_cc",
         "libinit_defaults",
     ],
+    exclude_srcs: [
+        "subcontext.cpp",
+        "snapuserd_transition.cpp",
+    ],
+    header_libs: [
+        "libgsi_headers",
+        "libsnapshot_headers",
+    ],
+    static_libs: [
+        "libfs_mgr.microdroid",
+        "liblp",
+    ],
+    exclude_static_libs: [
+        "libsnapshot",
+    ],
+    exclude_shared_libs: [
+        "libfs_mgr",
+        "libgsi",
+        "liblp",
+    ],
     recovery_available: false,
     cflags: ["-DMICRODROID=1"],
     cppflags: [
@@ -358,7 +378,22 @@ cc_binary {
         "avf_build_flags_cc",
         "init_second_stage_defaults",
     ],
-    static_libs: ["libinit.microdroid"],
+    static_libs: [
+        "libinit.microdroid",
+        "libfs_mgr.microdroid",
+        "libfs_avb",
+    ],
+    shared_libs: [
+        "libcrypto",
+    ],
+    exclude_static_libs: [
+        "libsnapshot",
+    ],
+    exclude_shared_libs: [
+        "libfs_mgr",
+        "libgsi",
+        "liblp",
+    ],
     cflags: ["-DMICRODROID=1"],
     cppflags: [
         "-UWORLD_WRITABLE_KMSG",
@@ -531,6 +566,9 @@ cc_binary {
     ],
     srcs: [
         "first_stage_mount_microdroid.cpp",
+    ],
+    static_libs: [
+        "libsnapshot",
     ],
     cflags: [
         "-DMICRODROID=1",

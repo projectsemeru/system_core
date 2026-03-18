@@ -122,7 +122,7 @@ void populate_fdsan_table(OpenFilesList* list, std::shared_ptr<unwindstack::Memo
     return;
   }
 
-  if (overflow_length > 131072) {
+  if (overflow_length > 512 * 1024) {
     ALOGE("unreasonable large fdsan overflow table size %zu, bailing out", overflow_length);
     return;
   }
