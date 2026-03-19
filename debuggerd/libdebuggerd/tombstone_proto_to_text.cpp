@@ -750,13 +750,18 @@ bool tombstone_proto_to_text(const Tombstone& tombstone, CallbackType callback,
     CBS("");
     CBS("open files:");
     for (const auto& fd : tombstone.open_fds()) {
-      std::optional<std::string> owner;
+      std::string line = StringPrintf("    fd %d: %s (", fd.fd(), fd.path().c_str());
       if (!fd.owner().empty()) {
-        owner = StringPrintf("owned by %s 0x%" PRIx64, fd.owner().c_str(), fd.tag());
+        line += StringPrintf("owned by %s 0x%" PRIx64, fd.owner().c_str(), fd.tag());
+      } else {
+        line += "unowned";
       }
+      line += ')';
 
-      CBS("    fd %d: %s (%s) %s", fd.fd(), fd.path().c_str(), owner ? owner->c_str() : "unowned",
-                                   fd.details().c_str());
+      if (!fd.details().empty()) {
+        line += " (" + fd.details() + ")";
+      }
+      CBS("%s", line.c_str());
     }
   }
 
