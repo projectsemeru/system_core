@@ -308,7 +308,7 @@ static void ParseArgs(int argc, char** argv, pid_t* pseudothread_tid, DebuggerdD
 static void ReadCrashInfo(unique_fd& fd, siginfo_t* siginfo,
                           std::unique_ptr<unwindstack::Regs>* regs, ProcessInfo* process_info,
                           bool* recoverable_crash) {
-  std::aligned_storage<sizeof(CrashInfo) + 1, alignof(CrashInfo)>::type buf = {};
+  alignas(CrashInfo) std::byte buf[sizeof(CrashInfo) + 1] = {};
   CrashInfo* crash_info = reinterpret_cast<CrashInfo*>(&buf);
   ssize_t rc = TEMP_FAILURE_RETRY(read(fd.get(), &buf, sizeof(buf)));
   *recoverable_crash = false;
