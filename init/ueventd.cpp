@@ -122,6 +122,8 @@
 namespace android {
 namespace init {
 
+static constexpr bool kLogUeventDuration = false;
+
 static UeventdConfiguration GetConfiguration() {
     if (IsMicrodroid()) {
         return ParseConfig({"/system/etc/ueventd.rc", "/vendor/etc/ueventd.rc"});
@@ -133,8 +135,12 @@ static UeventdConfiguration GetConfiguration() {
 void main_loop(const UeventListener& uevent_listener,
                const std::vector<std::shared_ptr<UeventHandler>>& uevent_handlers) {
     uevent_listener.Poll([&uevent_handlers](const Uevent& uevent) {
+        android::base::Timer t;
         for (auto& uevent_handler : uevent_handlers) {
             uevent_handler->HandleUevent(uevent);
+        }
+        if (kLogUeventDuration) {
+            LOG(INFO) << uevent << " took " << t.duration().count() << "ms";
         }
         return ListenerAction::kContinue;
     });
@@ -152,8 +158,12 @@ void parallel_main_loop(const UeventListener& uevent_listener,
         threads.emplace_back([&graph, &uevent_handlers] {
             while (true) {
                 auto uevent = graph.WaitDependencyFreeEvent();
+                android::base::Timer t;
                 for (auto& uevent_handler : uevent_handlers) {
                     uevent_handler->HandleUevent(uevent);
+                }
+                if (kLogUeventDuration) {
+                    LOG(INFO) << uevent << " took " << t.duration().count() << "ms";
                 }
                 graph.MarkEventCompleted(uevent.seqnum);
             }

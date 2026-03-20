@@ -234,5 +234,10 @@ void UeventListener::Poll(const ListenerCallback& callback,
     }
 }
 
+std::ostream& operator<<(std::ostream& os, const Uevent& uevent) {
+    os << "uevent { '" << uevent.action << "', '" << uevent.path << "' }";
+    return os;
+}
+
 }  // namespace init
 }  // namespace android
