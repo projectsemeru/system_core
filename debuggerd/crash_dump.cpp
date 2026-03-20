@@ -16,8 +16,10 @@
 
 #include <arpa/inet.h>
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/prctl.h>
 #include <sys/ptrace.h>
 #include <sys/types.h>
@@ -34,7 +36,8 @@
 #include <limits>
 #include <map>
 #include <memory>
-#include <set>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <android-base/errno_restorer.h>
@@ -773,6 +776,9 @@ int main(int argc, char** argv) {
     }
   }
 
+  std::unordered_map<uint64_t, std::string> vmflags;
+  get_vmflags(g_target_thread, vmflags);
+
   // Drop our capabilities now that we've fetched all of the information we need.
   drop_capabilities();
 
@@ -852,13 +858,13 @@ int main(int argc, char** argv) {
           break;
       }
       if (regs_arch == unwindstack::ARCH_UNKNOWN) {
-        engrave_tombstone(std::move(g_output_fd), std::move(g_proto_fd), &unwinder, thread_info,
-                          g_target_thread, process_info, &open_files, &amfd_data);
+        engrave_tombstone(std::move(g_output_fd), std::move(g_proto_fd), &unwinder, vmflags,
+                          thread_info, g_target_thread, process_info, &open_files, &amfd_data);
       } else {
         unwindstack::AndroidRemoteUnwinder guest_unwinder(vm_pid, regs_arch);
-        engrave_tombstone(std::move(g_output_fd), std::move(g_proto_fd), &unwinder, thread_info,
-                          g_target_thread, process_info, &open_files, &amfd_data, &g_guest_arch,
-                          &guest_unwinder);
+        engrave_tombstone(std::move(g_output_fd), std::move(g_proto_fd), &unwinder, vmflags,
+                          thread_info, g_target_thread, process_info, &open_files, &amfd_data,
+                          &g_guest_arch, &guest_unwinder);
       }
     }
   }

@@ -30,6 +30,7 @@
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include <android-base/file.h>
 #include <android-base/unique_fd.h>
@@ -128,20 +129,23 @@ void engrave_tombstone_ucontext(int tombstone_fd, int proto_fd, uint64_t abort_m
 
   ProcessInfo process_info;
   process_info.abort_msg_address = abort_msg_address;
-  engrave_tombstone(unique_fd(dup(tombstone_fd)), unique_fd(dup(proto_fd)), &unwinder, threads,
-                    target_tid, process_info, nullptr, nullptr);
+  std::unordered_map<uint64_t, std::string> vmflags;
+  get_vmflags(target_tid, vmflags);
+  engrave_tombstone(unique_fd(dup(tombstone_fd)), unique_fd(dup(proto_fd)), &unwinder, vmflags,
+                    threads, target_tid, process_info, nullptr, nullptr);
 }
 
 void engrave_tombstone(unique_fd output_fd, unique_fd proto_fd,
                        unwindstack::AndroidUnwinder* unwinder,
+                       const std::unordered_map<uint64_t, std::string>& vmflags,
                        const std::map<pid_t, ThreadInfo>& threads, pid_t target_thread,
                        const ProcessInfo& process_info, OpenFilesList* open_files,
                        std::string* amfd_data, const Architecture* guest_arch,
                        unwindstack::AndroidUnwinder* guest_unwinder) {
   // Don't copy log messages to tombstone unless this is a development device.
   Tombstone tombstone;
-  engrave_tombstone_proto(&tombstone, unwinder, threads, target_thread, process_info, open_files,
-                          guest_arch, guest_unwinder);
+  engrave_tombstone_proto(&tombstone, unwinder, vmflags, threads, target_thread, process_info,
+                          open_files, guest_arch, guest_unwinder);
 
   if (proto_fd != -1) {
     if (!tombstone.SerializeToFileDescriptor(proto_fd.get())) {
