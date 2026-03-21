@@ -464,10 +464,13 @@ static void print_memory_maps(CallbackType callback, const Tombstone& tombstone)
         line = "--->";
       }
     }
-    StringAppendF(&line, "%s-%s", format_pointer(map.begin_address()).c_str(),
+    StringAppendF(&line, "%s-%s ", format_pointer(map.begin_address()).c_str(),
                   format_pointer(map.end_address() - 1).c_str());
-    StringAppendF(&line, " %s%s%s", map.read() ? "r" : "-", map.write() ? "w" : "-",
-                  map.execute() ? "x" : "-");
+    std::string flags_str("---");
+    if (map.read()) flags_str[0] = 'r';
+    if (map.write()) flags_str[1] = 'w';
+    if (map.execute()) flags_str[2] = 'x';
+    line += flags_str;
     StringAppendF(&line, "  %8" PRIx64 "  %8" PRIx64, map.offset(),
                   map.end_address() - map.begin_address());
 
@@ -484,6 +487,15 @@ static void print_memory_maps(CallbackType callback, const Tombstone& tombstone)
     }
 
     CBS("%s", line.c_str());
+    if (!map.vmflags().empty()) {
+      // The spacing should cause the vm flags string to line up with the rw-
+      // from the map line.
+      // For 64 bit platforms, space length:
+      //   17(map addr) * 2 + 1(dash) + 1(space)- 9(VmFlags: )
+      // For 32 bit platforms, space length:
+      //   8(map addr) * 2 + 1(dash) + 1(space) - 9(VmFlags: )
+      CBS("    %*sVmFlags: %s", pointer_width(tombstone) == 8 ? 27 : 9, " ", map.vmflags().c_str());
+    }
   }
 
   if (has_fault_address && !printed_fault_address_marker) {
