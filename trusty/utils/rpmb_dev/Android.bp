@@ -80,4 +80,7 @@ cc_binary {
 cc_binary_host {
     name: "rpmb_dev.host",
     defaults: ["rpmb_dev.cc_defaults"],
+    cflags: [
+        "-DHOST_TEST=1",
+    ],
 }
