@@ -17,6 +17,7 @@
 #pragma once
 
 #include <sys/types.h>
+#include <cstdint>
 #include <initializer_list>
 #include <span>
 #include <string>
@@ -77,6 +78,7 @@ int killProcessGroupOnce(uid_t uid, pid_t initialPid, int signal);
 bool sendSignalToProcessGroup(uid_t uid, pid_t initialPid, int signal);
 
 int createProcessGroup(uid_t uid, pid_t initialPid, bool memControl = false);
+int createCGroupForCloneInto(uid_t uid, pid_t zygote_pid, uint64_t start_seq);
 
 // Set various properties of a process group. For these functions to work, the process group must
 // have been created by passing memControl=true to createProcessGroup.

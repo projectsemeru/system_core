@@ -36,7 +36,22 @@ pub mod cgroup {
         } else if err == -libc::EROFS {
             Err("Failed to create process group: Kernel missing support for cgroups".to_owned())
         } else {
-            Err(format!("Failed to create process group: {}", err))
+            Err(format!("Failed to create process group: {err}"))
+        }
+    }
+
+    /// Create a cgroup for use with `clone3` and `CLONE_INTO_CGROUP`
+    pub fn create_for_clone_into(
+        uid: libc::uid_t,
+        zygote_pid: libc::pid_t,
+        start_seq: u64,
+    ) -> Result<(), String> {
+        let res = super::inner::createCGroupForCloneInto(uid, zygote_pid, start_seq);
+
+        if res == 0 {
+            Ok(())
+        } else {
+            Err(format!("Failed to create a new cgroup for UID {uid}: {res}"))
         }
     }
 
@@ -113,6 +128,8 @@ mod inner {
         ) -> bool;
 
         fn createProcessGroup(uid: u32, pid: i32, memControl: bool) -> i32;
+
+        fn createCGroupForCloneInto(uid: u32, zygote_pid: i32, start_seq: u64) -> i32;
 
         fn DropTaskProfilesResourceCaching();
 
