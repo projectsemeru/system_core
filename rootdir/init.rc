@@ -13,6 +13,10 @@ import /system/etc/init/hw/init.${ro.zygote}.rc
 
 # Cgroups are mounted right before early-init using list from /etc/cgroups.json
 on early-init
+    # Allow bootchart to capture from the beginning of second-stage init.
+    mkdir /dev/bootchart 0755 root root
+    bootchart start
+
     # Disable sysrq from keyboard
     write /proc/sys/kernel/sysrq 0
 
@@ -105,6 +109,9 @@ on early-init
     restorecon /tmp
     chown shell shell /tmp
     chmod 0771 /tmp
+
+on early-init && property:ro.boot.bootchart.enabled=""
+    rmdir /dev/bootchart
 
 on init
     sysclktz 0
@@ -763,7 +770,6 @@ on post-fs-data
     chmod 0660 /data/misc/bluedroid/bt_config.conf
     chown bluetooth bluetooth /data/misc/bluedroid/bt_config.conf
     mkdir /data/misc/bluetooth 0770 bluetooth bluetooth
-    mkdir /data/misc/bluetooth/logs 0770 bluetooth bluetooth
     mkdir /data/misc/nfc 0770 nfc nfc
     mkdir /data/misc/nfc/logs 0770 nfc nfc
     mkdir /data/misc/credstore 0700 credstore credstore
