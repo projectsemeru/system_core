@@ -31,6 +31,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -762,6 +763,59 @@ int createProcessGroup(uid_t uid, pid_t initialPid, bool memControl) {
     std::string cgroup;
     CgroupGetControllerPath(CGROUPV2_HIERARCHY_NAME, &cgroup);
     return createProcessGroupInternal(uid, initialPid, cgroup, true);
+}
+
+int createCGroupForCloneInto(uid_t uid, pid_t zygote_pid, uint64_t start_seq) {
+    if (uid < 0) {
+        LOG(ERROR) << __func__ << ": invalid UID " << uid;
+        return -EINVAL;
+    }
+    if (zygote_pid <= 0) {
+        LOG(ERROR) << __func__ << ": invalid PID " << zygote_pid;
+        return -EINVAL;
+    }
+
+    std::string cgroup;
+    CgroupGetControllerPath(CGROUPV2_HIERARCHY_NAME, &cgroup);
+
+    auto uid_path = ConvertUidToPath(cgroup.c_str(), uid, true);
+
+    struct stat cgroup_stat;
+    mode_t cgroup_mode = 0750;
+    uid_t cgroup_uid = AID_SYSTEM;
+    gid_t cgroup_gid = AID_SYSTEM;
+
+    if (stat(cgroup.c_str(), &cgroup_stat) < 0) {
+        int saved_errno = errno;
+        PLOG(ERROR) << "Failed to get stats for " << cgroup;
+        return -saved_errno;
+    } else {
+        cgroup_mode = cgroup_stat.st_mode;
+        cgroup_uid = cgroup_stat.st_uid;
+        cgroup_gid = cgroup_stat.st_gid;
+    }
+
+    if (!MkdirAndChown(uid_path, cgroup_mode, cgroup_uid, cgroup_gid)) {
+        int saved_errno = errno;
+        PLOG(ERROR) << "Failed to make and chown " << uid_path;
+        return -saved_errno;
+    }
+
+    if (!CgroupMap::GetInstance().ActivateControllers(uid_path)) {
+        int saved_errno = errno;
+        PLOG(ERROR) << "Failed to activate controllers in " << uid_path;
+        return -saved_errno;
+    }
+
+    std::string cgroup_path = JoinPathForCloneInto(uid_path.c_str(), zygote_pid, start_seq);
+
+    if (!MkdirAndChown(cgroup_path, cgroup_mode, cgroup_uid, cgroup_gid)) {
+        int saved_errno = errno;
+        PLOG(ERROR) << "Failed to make and chown " << cgroup_path;
+        return -saved_errno;
+    }
+
+    return 0;
 }
 
 static bool SetProcessGroupValue(pid_t tid, const std::string& attr_name, int64_t value) {
