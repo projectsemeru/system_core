@@ -19,6 +19,7 @@
 
 #include <task_profiles.h>
 
+#include <cinttypes>
 #include <map>
 #include <string>
 
@@ -153,6 +154,16 @@ std::string ConvertUidToPath(const char* root_cgroup_path, uid_t uid, bool v2_pa
 std::string ConvertUidPidToPath(const char* root_cgroup_path, uid_t uid, pid_t pid, bool v2_path) {
     const std::string uid_path = ConvertUidToPath(root_cgroup_path, uid, v2_path);
     return StringPrintf("%s/pid_%d", uid_path.c_str(), pid);
+}
+
+std::string GetPathForCloneInto(const char* root_cgroup_path, uid_t uid, pid_t zygote_pid,
+                                uint64_t start_seq) {
+    const std::string uid_path = ConvertUidToPath(root_cgroup_path, uid, true);
+    return JoinPathForCloneInto(uid_path.c_str(), zygote_pid, start_seq);
+}
+
+std::string JoinPathForCloneInto(const char* uid_path, pid_t zygote_pid, uint64_t start_seq) {
+    return StringPrintf("%s/%d-%" PRIu64 "x", uid_path, zygote_pid, start_seq);
 }
 
 bool ProfileAttribute::GetPathForProcess(uid_t uid, pid_t pid, std::string* path) const {
