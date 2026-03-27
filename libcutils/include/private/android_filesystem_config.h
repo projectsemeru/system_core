@@ -151,6 +151,10 @@
 #define AID_UPDATE_ENGINE_LOG 1096   /* GID for accessing update_engine logs */
 #define AID_AP_FIRMWARE 1097         /* GID for accessing AP firmware related resources */
 #define AID_PMGD 1098                /* process memory guardian daemon */
+#define AID_SDV_SD_AGENT 1099        /* Software defined vehicle service discovery agent */
+#define AID_SDV_DT_AGENT 1100        /* Software defined vehicle data tunnel agent */
+#define AID_SDV_RPC_AGENT 1101       /* Software defined vehicle RPC agent */
+#define AID_SDV_INIT_OPEN_DICE 1102  /* Software defined vehicle init open dice driver */
 // Additions to this file must be accompanied by updates to expect_ids() in
 // bionic/tests/grp_pwd_test.cpp.
 
