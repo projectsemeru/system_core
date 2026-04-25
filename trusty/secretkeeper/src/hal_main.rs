@@ -86,7 +86,9 @@ impl SerializedChannel for TipcChannel {
             channel.send(&req_frag).map_err(|e| binderr("send request", e))?;
 
             // Every request gets a response.
-            let mut rsp_frag = Vec::new();
+            // Allocate a buffer with the maximum logical message size, to avoid
+            // reallocation during recv() calls.
+            let mut rsp_frag = Vec::with_capacity(TIPC_MAX_SIZE);
             channel.recv(&mut rsp_frag).map_err(|e| binderr("receive response", e))?;
 
             if let Some(full_rsp) = pending_rsp.accumulate(&rsp_frag) {
@@ -95,7 +97,7 @@ impl SerializedChannel for TipcChannel {
         }
         // There may be additional response fragments to receive.
         loop {
-            let mut rsp_frag = Vec::new();
+            let mut rsp_frag = Vec::with_capacity(TIPC_MAX_SIZE);
             channel.recv(&mut rsp_frag).map_err(|e| binderr("receive response", e))?;
             if let Some(full_rsp) = pending_rsp.accumulate(&rsp_frag) {
                 return Ok(full_rsp.to_vec());
